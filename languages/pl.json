@@ -1,0 +1,115 @@
+{
+  "common": {
+    "yes": "Tak",
+    "no": "Nie",
+    "enabled": "Włączony",
+    "disabled": "Wyłączony",
+    "success": "Sukces",
+    "error": "Błąd",
+    "channel": "Kanał",
+    "role": "Rola",
+    "user": "Użytkownik"
+  },
+  "modules": {
+    "list_title": "📦 Dostępne moduły",
+    "list_description": "Lista wszystkich modułów dostępnych dla tego serwera",
+    "enabled_modules": "✅ Włączone moduły",
+    "disabled_modules": "❌ Wyłączone moduły",
+    "module_enabled": "✅ Moduł włączony!",
+    "module_disabled": "❌ Moduł wyłączony",
+    "module_not_found": "❌ Nieznany moduł: `{module}`",
+    "already_enabled": "ℹ️ Moduł `{module}` jest już włączony!",
+    "not_enabled": "ℹ️ Moduł `{module}` nie jest włączony!",
+    "requires_setup": "⚙️ Wymaga konfiguracji",
+    "ready_to_use": "✅ Gotowy do użycia",
+    "no_permission": "❌ Musisz być administratorem aby zarządzać modułami!",
+    "enable_first": "❌ Najpierw włącz moduł używając `/modules enable {module}`"
+  },
+  "leaderboard": {
+    "updated": "✅ Twoja siła została zaktualizowana!",
+    "main_apc": "Główne APC",
+    "second_apc": "Drugie APC",
+    "reset_success": "✅ Tablica wyników została zresetowana.",
+    "not_configured": "❌ Leaderboard nie jest jeszcze skonfigurowany!\nAdministrator powinien użyć `/setup-leaderboard`",
+    "setup_success": "✅ Leaderboard skonfigurowany!",
+    "setup_description": "Ranking został utworzony w {channel}"
+  },
+  "freegames": {
+    "setup_success": "✅ Moduł skonfigurowany!",
+    "new_game": "**Nowa darmowa gra na {platform}!**",
+    "platform": "📦 Platforma",
+    "price": "💰 Cena",
+    "free": "**DARMOWE** 🎉",
+    "value": "💰 Wartość",
+    "available_until": "⏰ Dostępna do",
+    "check_website": "Sprawdź na stronie",
+    "found_games": "🎮 Znaleziono **{count}** darmowych gier!",
+    "no_games": "❌ Nie znaleziono żadnych darmowych gier.",
+    "platforms_updated": "✅ **Aktywne platformy:**",
+    "toggle_enabled": "✅ Automatyczne sprawdzanie zostało **włączone**",
+    "toggle_disabled": "⏸️ Automatyczne sprawdzanie zostało **wyłączone**"
+  },
+  "welcome": {
+    "setup_success": "✅ Welcome skonfigurowany!",
+    "setup_description": "Wiadomości powitalne będą wysyłane na {channel}",
+    "settings": "⚙️ Ustawienia",
+    "ping_members": "Pinguj nowych członków",
+    "placeholders": "💡 Placeholdery",
+    "placeholders_desc": "Możesz używać w tytule i opisie:\n• `{member_name}` - nazwa użytkownika\n• `{member_mention}` - wzmianka\n• `{server_name}` - nazwa serwera"
+  },
+  "suggestions": {
+    "new_suggestion": "💡 Nowa sugestia",
+    "status": "Status",
+    "pending": "🔁 Oczekuje na rozpatrzenie",
+    "approved": "✅ Zaakceptowana",
+    "rejected": "⛔ Odrzucona",
+    "submitted": "✅ Twoja sugestia została przesłana pomyślnie!",
+    "too_long": "❌ Twoja sugestia jest za długa! Maksymalnie 1000 znaków.",
+    "too_short": "❌ Twoja sugestia jest za krótka! Podaj więcej szczegółów.",
+    "not_configured": "❌ Kanał sugestii nie jest skonfigurowany! Skontaktuj się z administratorem.",
+    "setup_success": "✅ Suggestions skonfigurowany!",
+    "how_to_use": "ℹ️ Jak używać",
+    "how_to_use_desc": "• Użytkownicy: `/suggest <twoja sugestia>`\n• Moderatorzy mogą klikać ✅ lub ⛔ aby zaakceptować/odrzucić\n• Wszyscy mogą głosować 👍/👎"
+  },
+  "moderation": {
+    "messages_deleted": "🧹 Wiadomości usunięte",
+    "deleted_count": "Usunięto **{count}** wiadomości z {channel}.",
+    "invalid_amount": "⚠ Podaj liczbę od 1 do 100.",
+    "no_permission": "❌ Nie masz uprawnień do używania tej komendy.",
+    "setup_success": "✅ Moderation skonfigurowany!",
+    "moderator_roles": "🛡️ Role moderatorskie",
+    "available_commands": "ℹ️ Dostępne komendy"
+  },
+  "reaction_roles": {
+    "already_have": "ℹ️ Masz już tę rolę!",
+    "updated": "✅ Rola zaktualizowana pomyślnie!",
+    "new_role": "🎭 Nowa rola",
+    "removed_roles": "🗑️ Usunięte role",
+    "setup_success": "✅ Reaction Roles skonfigurowany!",
+    "location": "📍 Lokalizacja",
+    "roles": "🎭 Role",
+    "traveler_role": "🚶 Rola Traveler"
+  },
+  "tempchan": {
+    "created": "✅ Kanał utworzony!",
+    "your_channel": "Twój prywatny kanał: {channel}",
+    "permissions": "🔒 Uprawnienia",
+    "permissions_desc": "Tylko ty możesz widzieć ten kanał.\nMożesz zapraszać innych używając `/tempchan-invite`",
+    "invited": "✅ Zaproszenie wysłane!",
+    "invited_desc": "Zaprosiłeś {member} do {channel}",
+    "deleted": "✅ Twój prywatny kanał zostanie usunięty za chwilę...",
+    "already_have": "ℹ️ Masz już swój prywatny kanał: {channel}",
+    "no_channel": "❌ Nie masz jeszcze prywatnego kanału. Użyj `/tempchan-create`",
+    "setup_success": "✅ Tempchan skonfigurowany!",
+    "setup_desc": "Prywatne kanały będą tworzone w kategorii: **{category}**"
+  },
+  "language": {
+    "set_success": "✅ Twój język został ustawiony na **{language}**!",
+    "invalid": "❌ Nieprawidłowy kod języka: `{code}`",
+    "current": "Twój obecny język: **{language}**",
+    "available": "Dostępne języki:",
+    "guild_set": "✅ Domyślny język serwera ustawiony na **{language}**!",
+    "help_title": "🌐 Ustawienia języka",
+    "help_desc": "Ustaw swój preferowany język odpowiedzi bota."
+  }
+}

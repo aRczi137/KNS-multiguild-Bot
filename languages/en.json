@@ -1,0 +1,115 @@
+{
+  "common": {
+    "yes": "Yes",
+    "no": "No",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "success": "Success",
+    "error": "Error",
+    "channel": "Channel",
+    "role": "Role",
+    "user": "User"
+  },
+  "modules": {
+    "list_title": "📦 Available Modules",
+    "list_description": "List of all modules available for this server",
+    "enabled_modules": "✅ Enabled Modules",
+    "disabled_modules": "❌ Disabled Modules",
+    "module_enabled": "✅ Module Enabled!",
+    "module_disabled": "❌ Module Disabled",
+    "module_not_found": "❌ Unknown module: `{module}`",
+    "already_enabled": "ℹ️ Module `{module}` is already enabled!",
+    "not_enabled": "ℹ️ Module `{module}` is not enabled!",
+    "requires_setup": "⚙️ Requires configuration",
+    "ready_to_use": "✅ Ready to use",
+    "no_permission": "❌ You must be an administrator to manage modules!",
+    "enable_first": "❌ First enable the module using `/modules enable {module}`"
+  },
+  "leaderboard": {
+    "updated": "✅ Your strength has been updated!",
+    "main_apc": "Main APC",
+    "second_apc": "Second APC",
+    "reset_success": "✅ Leaderboard has been reset.",
+    "not_configured": "❌ Leaderboard is not configured yet!\nAdministrator should use `/setup-leaderboard`",
+    "setup_success": "✅ Leaderboard configured!",
+    "setup_description": "Ranking has been created in {channel}"
+  },
+  "freegames": {
+    "setup_success": "✅ Module configured!",
+    "new_game": "**New free game on {platform}!**",
+    "platform": "📦 Platform",
+    "price": "💰 Price",
+    "free": "**FREE** 🎉",
+    "value": "💰 Value",
+    "available_until": "⏰ Available until",
+    "check_website": "Check on website",
+    "found_games": "🎮 Found **{count}** free games!",
+    "no_games": "❌ No free games found.",
+    "platforms_updated": "✅ **Active platforms:**",
+    "toggle_enabled": "✅ Automatic checking **enabled**",
+    "toggle_disabled": "⏸️ Automatic checking **disabled**"
+  },
+  "welcome": {
+    "setup_success": "✅ Welcome configured!",
+    "setup_description": "Welcome messages will be sent to {channel}",
+    "settings": "⚙️ Settings",
+    "ping_members": "Ping new members",
+    "placeholders": "💡 Placeholders",
+    "placeholders_desc": "You can use in title and description:\n• `{member_name}` - username\n• `{member_mention}` - mention\n• `{server_name}` - server name"
+  },
+  "suggestions": {
+    "new_suggestion": "💡 New Suggestion",
+    "status": "Status",
+    "pending": "🔁 Pending Review",
+    "approved": "✅ Approved",
+    "rejected": "⛔ Rejected",
+    "submitted": "✅ Your suggestion has been submitted successfully!",
+    "too_long": "❌ Your suggestion is too long! Max 1000 characters.",
+    "too_short": "❌ Your suggestion is too short! Provide more details.",
+    "not_configured": "❌ Suggestions channel is not configured! Contact an administrator.",
+    "setup_success": "✅ Suggestions configured!",
+    "how_to_use": "ℹ️ How to use",
+    "how_to_use_desc": "• Users: `/suggest <your suggestion>`\n• Moderators can click ✅ or ⛔ to approve/reject\n• Everyone can vote 👍/👎"
+  },
+  "moderation": {
+    "messages_deleted": "🧹 Messages Deleted",
+    "deleted_count": "Deleted **{count}** messages from {channel}.",
+    "invalid_amount": "⚠ Please provide a number between 1 and 100.",
+    "no_permission": "❌ You don't have permission to use this command.",
+    "setup_success": "✅ Moderation configured!",
+    "moderator_roles": "🛡️ Moderator roles",
+    "available_commands": "ℹ️ Available commands"
+  },
+  "reaction_roles": {
+    "already_have": "ℹ️ You already have this role!",
+    "updated": "✅ Role updated successfully!",
+    "new_role": "🎭 New role",
+    "removed_roles": "🗑️ Removed roles",
+    "setup_success": "✅ Reaction Roles configured!",
+    "location": "📍 Location",
+    "roles": "🎭 Roles",
+    "traveler_role": "🚶 Traveler Role"
+  },
+  "tempchan": {
+    "created": "✅ Channel created!",
+    "your_channel": "Your private channel: {channel}",
+    "permissions": "🔒 Permissions",
+    "permissions_desc": "Only you can see this channel.\nYou can invite others using `/tempchan-invite`",
+    "invited": "✅ Invitation sent!",
+    "invited_desc": "You invited {member} to {channel}",
+    "deleted": "✅ Your private channel will be deleted shortly...",
+    "already_have": "ℹ️ You already have your private channel: {channel}",
+    "no_channel": "❌ You don't have a private channel yet. Use `/tempchan-create`",
+    "setup_success": "✅ Tempchan configured!",
+    "setup_desc": "Private channels will be created in category: **{category}**"
+  },
+  "language": {
+    "set_success": "✅ Your language has been set to **{language}**!",
+    "invalid": "❌ Invalid language code: `{code}`",
+    "current": "Your current language: **{language}**",
+    "available": "Available languages:",
+    "guild_set": "✅ Server default language set to **{language}**!",
+    "help_title": "🌐 Language Settings",
+    "help_desc": "Set your preferred language for bot responses."
+  }
+}
