@@ -1,133 +1,729 @@
-# cogs/schedule.py
-from __future__ import annotations
-# Hack dla problematycznych hostingów
-import typing
-if not hasattr(typing, 'get_origin'):
-    import sys
-    class DummyInteraction:
-        pass
-    sys.modules['discord'].Interaction = DummyInteraction
-
+# -*- coding: utf-8 -*-
+# cogs/schedule.py - Part 1/2
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
-from typing import Any
+from typing import Any, Optional
 import json
-import os
-from datetime import datetime, timedelta, timezone, time
 import logging
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-# Używamy loggera skonfigurowanego w głównym pliku bota (bot.py)
-log = logging.getLogger('discord')
-
-InteractionType = discord.Interaction
-# Configuration files
-SCHEDULE_FILE = "scheduled_events.json"
-TEMPLATES_FILE = "templates.json"
-CONFIG_FILE = "config.json"
-RECURRING_CONFIG_FILE = "recurring_schedules.json"
-
-# Create a fixed UTC-2 timezone for game server
+logger = logging.getLogger('discord')
 SERVER_TIMEZONE = timezone(timedelta(hours=-2))
 
+# [MODALS AND VIEWS - Copy from original but add guild_id parameter]
+class TemplateBuilderModal(discord.ui.Modal, title="Create Message Template"):
+    """Modal do tworzenia szablonu wiadomości - PODSTAWOWE POLA"""
+    
+    template_name = discord.ui.TextInput(
+        label="Template Name",
+        placeholder="e.g., kvk_reminder",
+        required=True,
+        max_length=50
+    )
+    
+    message_content = discord.ui.TextInput(
+        label="Message Content (optional)",
+        placeholder="Text above embed (optional)",
+        style=discord.TextStyle.paragraph,
+        required=False,
+        max_length=2000
+    )
+    
+    embed_title = discord.ui.TextInput(
+        label="Embed Title",
+        placeholder="e.g., KvK Reminder",
+        required=False,
+        max_length=256
+    )
+    
+    embed_description = discord.ui.TextInput(
+        label="Embed Description",
+        placeholder="Use {countdown}, {time}, {date} for dynamic values",
+        style=discord.TextStyle.paragraph,
+        required=True,
+        max_length=4000
+    )
+    
+    embed_color = discord.ui.TextInput(
+        label="Embed Color (hex)",
+        placeholder="e.g., #d07d23",
+        required=False,
+        max_length=7
+    )
+
+
+class ImageModal(discord.ui.Modal, title="Add Images"):
+    """Modal do dodawania obrazków"""
+    
+    thumbnail_url = discord.ui.TextInput(
+        label="Thumbnail URL (small image, right side)",
+        placeholder="https://example.com/image.png",
+        required=False,
+        max_length=500
+    )
+    
+    image_url = discord.ui.TextInput(
+        label="Main Image URL (large image, bottom)",
+        placeholder="https://example.com/banner.png",
+        required=False,
+        max_length=500
+    )
+    
+    author_name = discord.ui.TextInput(
+        label="Author Name (optional, top of embed)",
+        placeholder="e.g., Kingdom of Knights",
+        required=False,
+        max_length=256
+    )
+    
+    author_icon_url = discord.ui.TextInput(
+        label="Author Icon URL (optional)",
+        placeholder="https://example.com/icon.png",
+        required=False,
+        max_length=500
+    )
+
+
+class FooterModal(discord.ui.Modal, title="Add Footer"):
+    """Modal do dodawania stopki"""
+    
+    footer_text = discord.ui.TextInput(
+        label="Footer Text",
+        placeholder="e.g., Kingdom of Knights Bot • {date}",
+        style=discord.TextStyle.paragraph,
+        required=True,
+        max_length=2048
+    )
+    
+    footer_icon_url = discord.ui.TextInput(
+        label="Footer Icon URL (optional)",
+        placeholder="https://example.com/icon.png",
+        required=False,
+        max_length=500
+    )
+
+
+class TemplateBuilder(discord.ui.View):
+    """Interaktywny builder do tworzenia templatek z obrazkami i stopką"""
+    
+    def __init__(self, user_id: int, cog, guild_id: int):
+        super().__init__(timeout=300)
+        self.user_id = user_id
+        self.cog = cog
+        self.guild_id = guild_id
+        self.template_data = {
+            "type": "embed",
+            "content": None,
+            "embed": {
+                "title": "New Template",
+                "description": "Click 'Edit Content' to customize",
+                "color": "#d07d23",
+                "fields": [],
+                "thumbnail": None,
+                "image": None,
+                "author": None,
+                "footer": None
+            }
+        }
+        self.template_name = None
+    
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "❌ This template builder belongs to someone else!",
+                ephemeral=True
+            )
+            return False
+        return True
+    
+    def create_preview_embed(self) -> discord.Embed:
+        """Tworzy embed preview"""
+        embed_data = self.template_data.get("embed", {})
+        
+        color_hex = embed_data.get("color", "#d07d23").replace("#", "")
+        try:
+            color = discord.Color(int(color_hex, 16))
+        except:
+            color = discord.Color.blue()
+        
+        embed = discord.Embed(
+            title=embed_data.get("title", "No title"),
+            description=embed_data.get("description", "No description"),
+            color=color
+        )
+        
+        # Author
+        if embed_data.get("author"):
+            author_data = embed_data["author"]
+            embed.set_author(
+                name=author_data.get("name", ""),
+                icon_url=author_data.get("icon_url")
+            )
+        
+        # Fields
+        for field in embed_data.get("fields", []):
+            embed.add_field(
+                name=field.get("name", "Field"),
+                value=field.get("value", "Value"),
+                inline=field.get("inline", False)
+            )
+        
+        # Thumbnail (small image, right side)
+        if embed_data.get("thumbnail"):
+            try:
+                embed.set_thumbnail(url=embed_data["thumbnail"])
+            except:
+                pass
+        
+        # Main Image (large, bottom)
+        if embed_data.get("image"):
+            try:
+                embed.set_image(url=embed_data["image"])
+            except:
+                pass
+        
+        # Footer
+        if embed_data.get("footer"):
+            footer_data = embed_data["footer"]
+            if isinstance(footer_data, dict):
+                embed.set_footer(
+                    text=footer_data.get("text", ""),
+                    icon_url=footer_data.get("icon_url")
+                )
+            else:
+                embed.set_footer(text=footer_data)
+        
+        # Default footer if no custom footer
+        if not embed_data.get("footer"):
+            if self.template_name:
+                embed.set_footer(text=f"Template: {self.template_name}")
+            else:
+                embed.set_footer(text="Preview - not saved yet")
+        
+        return embed
+    
+    @discord.ui.button(label="Edit Content", style=discord.ButtonStyle.primary, emoji="✏️", row=0)
+    async def edit_template(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Edytuj podstawową treść szablonu"""
+        modal = TemplateBuilderModal()
+        
+        # Wypełnij domyślnymi wartościami
+        if self.template_name:
+            modal.template_name.default = self.template_name
+        
+        embed_data = self.template_data.get("embed", {})
+        if self.template_data.get("content"):
+            modal.message_content.default = self.template_data["content"]
+        if embed_data.get("title"):
+            modal.embed_title.default = embed_data["title"]
+        if embed_data.get("description"):
+            modal.embed_description.default = embed_data["description"]
+        if embed_data.get("color"):
+            modal.embed_color.default = embed_data["color"]
+        
+        async def modal_callback(modal_interaction: discord.Interaction):
+            self.template_name = modal.template_name.value
+            self.template_data["content"] = modal.message_content.value or None
+            self.template_data["embed"]["title"] = modal.embed_title.value or None
+            self.template_data["embed"]["description"] = modal.embed_description.value
+            self.template_data["embed"]["color"] = modal.embed_color.value or "#d07d23"
+            
+            embed = self.create_preview_embed()
+            content = f"**📝 Template Preview: {self.template_name}**\n\n"
+            if self.template_data.get("content"):
+                content += f"*Content:* {self.template_data['content'][:100]}...\n\n"
+            
+            await modal_interaction.response.edit_message(content=content, embed=embed, view=self)
+        
+        modal.on_submit = modal_callback
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label="Add Images", style=discord.ButtonStyle.secondary, emoji="🖼️", row=0)
+    async def add_images(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Dodaj obrazki"""
+        modal = ImageModal()
+        
+        # Wypełnij istniejącymi wartościami
+        embed_data = self.template_data.get("embed", {})
+        if embed_data.get("thumbnail"):
+            modal.thumbnail_url.default = embed_data["thumbnail"]
+        if embed_data.get("image"):
+            modal.image_url.default = embed_data["image"]
+        
+        author_data = embed_data.get("author")
+        if author_data:
+            if author_data.get("name"):
+                modal.author_name.default = author_data["name"]
+            if author_data.get("icon_url"):
+                modal.author_icon_url.default = author_data["icon_url"]
+        
+        async def modal_callback(modal_interaction: discord.Interaction):
+            # Update thumbnail
+            if modal.thumbnail_url.value:
+                self.template_data["embed"]["thumbnail"] = modal.thumbnail_url.value
+            else:
+                self.template_data["embed"]["thumbnail"] = None
+            
+            # Update main image
+            if modal.image_url.value:
+                self.template_data["embed"]["image"] = modal.image_url.value
+            else:
+                self.template_data["embed"]["image"] = None
+            
+            # Update author
+            if modal.author_name.value or modal.author_icon_url.value:
+                self.template_data["embed"]["author"] = {
+                    "name": modal.author_name.value or "Unknown",
+                    "icon_url": modal.author_icon_url.value or None
+                }
+            else:
+                self.template_data["embed"]["author"] = None
+            
+            embed = self.create_preview_embed()
+            await modal_interaction.response.edit_message(embed=embed, view=self)
+        
+        modal.on_submit = modal_callback
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label="Add Footer", style=discord.ButtonStyle.secondary, emoji="📝", row=0)
+    async def add_footer(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Dodaj stopkę"""
+        modal = FooterModal()
+        
+        # Wypełnij istniejącymi wartościami
+        embed_data = self.template_data.get("embed", {})
+        footer_data = embed_data.get("footer")
+        
+        if footer_data:
+            if isinstance(footer_data, dict):
+                if footer_data.get("text"):
+                    modal.footer_text.default = footer_data["text"]
+                if footer_data.get("icon_url"):
+                    modal.footer_icon_url.default = footer_data["icon_url"]
+            elif isinstance(footer_data, str):
+                modal.footer_text.default = footer_data
+        
+        async def modal_callback(modal_interaction: discord.Interaction):
+            # Update footer
+            if modal.footer_text.value:
+                self.template_data["embed"]["footer"] = {
+                    "text": modal.footer_text.value,
+                    "icon_url": modal.footer_icon_url.value or None
+                }
+            else:
+                self.template_data["embed"]["footer"] = None
+            
+            embed = self.create_preview_embed()
+            await modal_interaction.response.edit_message(embed=embed, view=self)
+        
+        modal.on_submit = modal_callback
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label="Add Field", style=discord.ButtonStyle.secondary, emoji="➕", row=1)
+    async def add_field(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Dodaj pole do embeda"""
+        
+        if len(self.template_data["embed"].get("fields", [])) >= 25:
+            await interaction.response.send_message(
+                "❌ Maximum 25 fields allowed!",
+                ephemeral=True
+            )
+            return
+        
+        modal = discord.ui.Modal(title="Add Field to Embed")
+        
+        field_name = discord.ui.TextInput(
+            label="Field Name",
+            placeholder="e.g., Event Time",
+            required=True,
+            max_length=256
+        )
+        
+        field_value = discord.ui.TextInput(
+            label="Field Value",
+            placeholder="Use {countdown}, {time}, {date}",
+            style=discord.TextStyle.paragraph,
+            required=True,
+            max_length=1024
+        )
+        
+        inline = discord.ui.TextInput(
+            label="Inline? (yes/no)",
+            placeholder="yes or no",
+            required=False,
+            max_length=3,
+            default="no"
+        )
+        
+        modal.add_item(field_name)
+        modal.add_item(field_value)
+        modal.add_item(inline)
+        
+        async def modal_callback(modal_interaction: discord.Interaction):
+            is_inline = inline.value.lower() in ["yes", "y", "true", "1"]
+            
+            if "fields" not in self.template_data["embed"]:
+                self.template_data["embed"]["fields"] = []
+            
+            self.template_data["embed"]["fields"].append({
+                "name": field_name.value,
+                "value": field_value.value,
+                "inline": is_inline
+            })
+            
+            embed = self.create_preview_embed()
+            await modal_interaction.response.edit_message(embed=embed, view=self)
+        
+        modal.on_submit = modal_callback
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label="Remove Last Field", style=discord.ButtonStyle.secondary, emoji="➖", row=1)
+    async def remove_field(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Usuń ostatnie pole"""
+        
+        fields = self.template_data["embed"].get("fields", [])
+        if not fields:
+            await interaction.response.send_message(
+                "❌ No fields to remove!",
+                ephemeral=True
+            )
+            return
+        
+        fields.pop()
+        embed = self.create_preview_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label="Clear Images", style=discord.ButtonStyle.secondary, emoji="🗑️", row=1)
+    async def clear_images(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Usuń wszystkie obrazki"""
+        self.template_data["embed"]["thumbnail"] = None
+        self.template_data["embed"]["image"] = None
+        self.template_data["embed"]["author"] = None
+        
+        embed = self.create_preview_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.followup.send("🗑️ Cleared all images", ephemeral=True)
+    
+    @discord.ui.button(label="Save Template", style=discord.ButtonStyle.success, emoji="💾", row=2)
+    async def save_template(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Zapisz szablon"""
+        
+        if not self.template_name:
+            await interaction.response.send_message(
+                "❌ Please edit the template and set a name first!",
+                ephemeral=True
+            )
+            return
+        
+        # Zapisz template
+        templates = self.cog.load_templates(self.guild_id)
+        templates[self.template_name] = self.template_data
+        self.cog.save_templates(self.guild_id, templates)
+        
+        # Podsumowanie
+        embed_data = self.template_data["embed"]
+        features = []
+        if embed_data.get("thumbnail"):
+            features.append("✅ Thumbnail")
+        if embed_data.get("image"):
+            features.append("✅ Main Image")
+        if embed_data.get("author"):
+            features.append("✅ Author")
+        if embed_data.get("footer"):
+            features.append("✅ Footer")
+        if embed_data.get("fields"):
+            features.append(f"✅ {len(embed_data['fields'])} Fields")
+        
+        features_text = "\n".join(features) if features else "Basic embed"
+        
+        await interaction.response.send_message(
+            f"✅ Template `{self.template_name}` saved successfully!\n\n**Features:**\n{features_text}",
+            ephemeral=True
+        )
+        
+        logger.info(f"Saved template '{self.template_name}' for guild {self.guild_id}")
+    
+    @discord.ui.button(label="Get JSON", style=discord.ButtonStyle.secondary, emoji="📋", row=2)
+    async def get_json(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Pobierz JSON"""
+        json_str = json.dumps(self.template_data, indent=2, ensure_ascii=False)
+        
+        if len(json_str) > 1900:
+            # Send as file
+            file = discord.File(
+                fp=discord.utils.MISSING,
+                filename="template.json"
+            )
+            await interaction.response.send_message(
+                "📋 Here's your template as JSON:",
+                file=file,
+                ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                f"📋 **Template JSON:**\n```json\n{json_str}\n```",
+                ephemeral=True
+            )
+    
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger, emoji="❌", row=2)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Anuluj"""
+        await interaction.response.edit_message(
+            content="❌ Template builder cancelled.",
+            embed=None,
+            view=None
+        )
+        self.stop()
+
 class ScheduleModal(discord.ui.Modal, title="Create Scheduled Event"):
-    def __init__(self, schedule_cog, template_name):
+    def __init__(self, schedule_cog, template_name, guild_id):
         super().__init__()
         self.schedule_cog = schedule_cog
         self.template_name = template_name
+        self.guild_id = guild_id
 
-    start_date = discord.ui.TextInput(
-        label="Start Date",
-        placeholder="YYYY-MM-DD (e.g., 2025-08-21)",
+    start_date = discord.ui.TextInput(label="Start Date", placeholder="YYYY-MM-DD", required=True, max_length=10)
+    start_time = discord.ui.TextInput(label="Start Time", placeholder="HH:MM", required=True, max_length=5)
+    end_date = discord.ui.TextInput(label="End Date", placeholder="YYYY-MM-DD", required=True, max_length=10)
+    end_time = discord.ui.TextInput(label="End Time", placeholder="HH:MM", required=True, max_length=5)
+    interval = discord.ui.TextInput(label="Interval (minutes)", placeholder="30", required=True, max_length=4)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            start_dt = datetime.fromisoformat(f"{self.start_date.value} {self.start_time.value}").replace(second=0, microsecond=0, tzinfo=SERVER_TIMEZONE)
+            end_dt = datetime.fromisoformat(f"{self.end_date.value} {self.end_time.value}").replace(second=0, microsecond=0, tzinfo=SERVER_TIMEZONE)
+            interval_minutes = max(1, int(self.interval.value))
+            
+            event = {
+                "type": "one_time", "guild_id": self.guild_id, "channel_id": interaction.channel.id,
+                "start": start_dt.isoformat(), "end": end_dt.isoformat(),
+                "template": self.template_name, "interval": interval_minutes,
+                "last_sent": None, "next_send": start_dt.isoformat()
+            }
+            
+            events = self.schedule_cog.load_events(self.guild_id)
+            events.append(event)
+            self.schedule_cog.save_events(self.guild_id, events)
+            await self.schedule_cog.log_schedule_creation(interaction, event)
+            
+            embed = discord.Embed(title="✅ Event Scheduled", description=f"Template: `{self.template_name}`", color=0x57F287)
+            embed.add_field(name="Start", value=start_dt.strftime("%Y-%m-%d %H:%M"), inline=True)
+            embed.add_field(name="End", value=end_dt.strftime("%Y-%m-%d %H:%M"), inline=True)
+            embed.add_field(name="Interval", value=f"{interval_minutes} min", inline=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
+
+class TemplateSelectView(discord.ui.View):
+    def __init__(self, schedule_cog, templates, guild_id):
+        super().__init__(timeout=300)
+        self.schedule_cog = schedule_cog
+        self.templates = templates
+        self.guild_id = guild_id
+        options = [discord.SelectOption(label=name, value=name) for name in templates.keys()]
+        if options:
+            self.template_select.options = options[:25]
+        else:
+            self.template_select.disabled = True
+
+    @discord.ui.select(placeholder="Choose template...")
+    async def template_select(self, interaction: discord.Interaction, select: discord.ui.Select):
+        modal = ScheduleModal(self.schedule_cog, select.values[0], self.guild_id)
+        await interaction.response.send_modal(modal)
+class RecurringScheduleModal(discord.ui.Modal, title="Create Recurring Schedule"):
+    """Modal do tworzenia recurring schedule"""
+    
+    def __init__(self, schedule_cog, template_name, guild_id):
+        super().__init__()
+        self.schedule_cog = schedule_cog
+        self.template_name = template_name
+        self.guild_id = guild_id
+    
+    schedule_name = discord.ui.TextInput(
+        label="Schedule Name",
+        placeholder="e.g., weekend_kvk_reminder",
         required=True,
-        max_length=10
+        max_length=50
+    )
+    
+    start_day = discord.ui.TextInput(
+        label="Start Day",
+        placeholder="Monday=0, Tuesday=1, ..., Sunday=6 (e.g., 4 for Friday)",
+        required=True,
+        max_length=1
     )
     
     start_time = discord.ui.TextInput(
         label="Start Time",
-        placeholder="HH:MM (e.g., 14:30)",
-        required=True,
-        max_length=5
-    )
-    
-    end_date = discord.ui.TextInput(
-        label="End Date",
-        placeholder="YYYY-MM-DD (e.g., 2025-08-22)",
-        required=True,
-        max_length=10
-    )
-    
-    end_time = discord.ui.TextInput(
-        label="End Time",
         placeholder="HH:MM (e.g., 18:00)",
         required=True,
         max_length=5
     )
     
-    interval = discord.ui.TextInput(
-        label="Interval (minutes)",
-        placeholder="e.g., 30",
+    end_day = discord.ui.TextInput(
+        label="End Day",
+        placeholder="0-6 (e.g., 5 for Saturday)",
         required=True,
-        max_length=4
+        max_length=1
     )
-
+    
+    end_time = discord.ui.TextInput(
+        label="End Time",
+        placeholder="HH:MM (e.g., 22:00)",
+        required=True,
+        max_length=5
+    )
+    
     async def on_submit(self, interaction: discord.Interaction):
         try:
-            # Parse dates without timezone first, then add server timezone
-            naive_start = datetime.fromisoformat(f"{self.start_date.value} {self.start_time.value}")
-            naive_end = datetime.fromisoformat(f"{self.end_date.value} {self.end_time.value}")
+            start_day = int(self.start_day.value)
+            end_day = int(self.end_day.value)
             
-            # Add server timezone (UTC-2) and zaokrąglaj do pełnych minut
-            start_dt = naive_start.replace(second=0, microsecond=0, tzinfo=SERVER_TIMEZONE)
-            end_dt = naive_end.replace(second=0, microsecond=0, tzinfo=SERVER_TIMEZONE)
+            if not (0 <= start_day <= 6 and 0 <= end_day <= 6):
+                await interaction.response.send_message(
+                    "❌ Days must be 0-6 (Monday=0, Sunday=6)",
+                    ephemeral=True
+                )
+                return
             
-            interval_minutes = max(1, int(self.interval.value))  # Minimum 1 minuta
+            # Validate times
+            try:
+                datetime.strptime(self.start_time.value, "%H:%M")
+                datetime.strptime(self.end_time.value, "%H:%M")
+            except ValueError:
+                await interaction.response.send_message(
+                    "❌ Invalid time format! Use HH:MM (e.g., 18:00)",
+                    ephemeral=True
+                )
+                return
             
-            event = {
-                "type": "one_time",
-                "channel_id": interaction.channel.id,
-                "start": start_dt.isoformat(),
-                "end": end_dt.isoformat(),
+            # Create recurring schedule
+            schedule = {
+                "name": self.schedule_name.value,
+                "enabled": True,
+                "is_multiday": True,
+                "multiday_config": {
+                    "start_day": start_day,
+                    "start_time": self.start_time.value,
+                    "end_day": end_day,
+                    "end_time": self.end_time.value
+                },
                 "template": self.template_name,
-                "interval": interval_minutes,
-                "last_sent": None,
-                "next_send": start_dt.isoformat()  # Dodane pole dla precyzyjnego planowania
+                "channel_id": interaction.channel.id,
+                "interval_hours": 2,  # Default: co 2h
+                "last_sent": None
             }
             
-            self.schedule_cog.events.append(event)
-            self.schedule_cog.save_events()
+            # Load and save
+            recurring_data = self.schedule_cog.load_recurring_schedules(self.guild_id)
+            if "schedules" not in recurring_data:
+                recurring_data["schedules"] = []
             
-            await self.schedule_cog.log_schedule_creation(interaction, event)
+            recurring_data["schedules"].append(schedule)
+            self.schedule_cog.save_recurring_schedules(self.guild_id, recurring_data)
+            
+            # Day names
+            days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
             
             embed = discord.Embed(
-                title="✅ Event Scheduled",
-                description=f"Successfully scheduled `{self.template_name}` template",
+                title="✅ Recurring Schedule Created",
+                description=f"Schedule: `{self.schedule_name.value}`",
                 color=0x57F287
             )
-            embed.add_field(name="Start", value=start_dt.strftime("%Y-%m-%d %H:%M %Z"), inline=True)
-            embed.add_field(name="End", value=end_dt.strftime("%Y-%m-%d %H:%M %Z"), inline=True)
-            embed.add_field(name="Interval", value=f"{interval_minutes} minutes", inline=True)
-            embed.add_field(name="Channel", value=interaction.channel.mention, inline=False)
+            embed.add_field(
+                name="📅 Time Range",
+                value=f"{days[start_day]} {self.start_time.value} → {days[end_day]} {self.end_time.value}",
+                inline=False
+            )
+            embed.add_field(name="📝 Template", value=self.template_name, inline=True)
+            embed.add_field(name="📢 Channel", value=interaction.channel.mention, inline=True)
+            embed.add_field(name="⏱️ Interval", value="Every 2 hours", inline=True)
+            embed.set_footer(text="Messages will be sent automatically during this time window")
             
             await interaction.response.send_message(embed=embed, ephemeral=True)
             
+            logger.info(
+                f"Created recurring schedule '{self.schedule_name.value}' "
+                f"for guild {self.guild_id}"
+            )
+            
         except ValueError as e:
-            await interaction.response.send_message(f"❌ Invalid date/time format or interval: {e}", ephemeral=True)
+            await interaction.response.send_message(
+                f"❌ Invalid input: {e}",
+                ephemeral=True
+            )
         except Exception as e:
-            log.error(f"Error submitting schedule modal: {e}", exc_info=True)
-            await interaction.response.send_message(f"❌ An error occurred: {e}", ephemeral=True)
+            logger.error(f"Error creating recurring schedule: {e}", exc_info=True)
+            await interaction.response.send_message(
+                f"❌ An error occurred: {e}",
+                ephemeral=True
+            )
 
-class TemplateSelectView(discord.ui.View):
-    def __init__(self, schedule_cog, templates):
+
+class RecurringIntervalModal(discord.ui.Modal, title="Set Interval"):
+    """Modal do ustawiania interwału"""
+    
+    interval_hours = discord.ui.TextInput(
+        label="Interval (hours)",
+        placeholder="e.g., 2 (send every 2 hours)",
+        required=True,
+        max_length=3
+    )
+    
+    def __init__(self, schedule_cog, schedule_name, guild_id):
+        super().__init__()
+        self.schedule_cog = schedule_cog
+        self.schedule_name = schedule_name
+        self.guild_id = guild_id
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            interval = float(self.interval_hours.value)
+            
+            if interval < 0.5 or interval > 24:
+                await interaction.response.send_message(
+                    "❌ Interval must be between 0.5 and 24 hours",
+                    ephemeral=True
+                )
+                return
+            
+            # Update schedule
+            recurring_data = self.schedule_cog.load_recurring_schedules(self.guild_id)
+            
+            for schedule in recurring_data.get("schedules", []):
+                if schedule.get("name") == self.schedule_name:
+                    schedule["interval_hours"] = interval
+                    break
+            
+            self.schedule_cog.save_recurring_schedules(self.guild_id, recurring_data)
+            
+            await interaction.response.send_message(
+                f"✅ Interval updated to {interval} hours for `{self.schedule_name}`",
+                ephemeral=True
+            )
+            
+        except ValueError:
+            await interaction.response.send_message(
+                "❌ Invalid number format",
+                ephemeral=True
+            )
+
+
+class TemplateSelectRecurringView(discord.ui.View):
+    """View do wyboru szablonu dla recurring schedule"""
+    
+    def __init__(self, schedule_cog, templates, guild_id):
         super().__init__(timeout=300)
         self.schedule_cog = schedule_cog
         self.templates = templates
+        self.guild_id = guild_id
         
         options = []
-        for template_name, template_data in self.templates.items():
+        for template_name in templates.keys():
             options.append(discord.SelectOption(
                 label=template_name,
-                description=f"Type: {template_data.get('type', 'unknown')}",
                 value=template_name
             ))
         
@@ -136,106 +732,1083 @@ class TemplateSelectView(discord.ui.View):
         else:
             self.template_select.disabled = True
 
-    @discord.ui.select(placeholder="Choose a template...")
+    @discord.ui.select(placeholder="Choose a template for recurring schedule...")
     async def template_select(self, interaction: discord.Interaction, select: discord.ui.Select):
         template_name = select.values[0]
-        modal = ScheduleModal(self.schedule_cog, template_name)
+        modal = RecurringScheduleModal(self.schedule_cog, template_name, self.guild_id)
         await interaction.response.send_modal(modal)
 
-class Schedule(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
-        self.events = self.load_events()
-        self.templates = self.load_templates()
-        self.config = self.load_config()
-        self.recurring_schedules = self.load_recurring_schedules()
-        self.timezone = SERVER_TIMEZONE
+class EditScheduleModal(discord.ui.Modal, title="Edit Schedule"):
+    """Modal do edycji one-time schedule"""
+    
+    def __init__(self, schedule_cog, event_index: int, event: dict, guild_id: int):
+        super().__init__()
+        self.schedule_cog = schedule_cog
+        self.event_index = event_index
+        self.event = event
+        self.guild_id = guild_id
         
-        # Start both checking tasks
-        self.check_events.start()
-        self.check_recurring_schedules.start()
-
-    def load_json_file(self, filename: str, default_value: Any) -> Any:
+        # Pre-fill with current values
         try:
-            if os.path.exists(filename):
-                with open(filename, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            return default_value
-        except Exception as e:
-            log.error(f"Error loading JSON file {filename}: {e}")
-            return default_value
-
-    def save_json_file(self, filename: str, data: Any):
-        try:
-            with open(filename, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
-        except Exception as e:
-            log.error(f"Error saving JSON file {filename}: {e}")
-
-    def load_events(self):
-        return self.load_json_file(SCHEDULE_FILE, [])
-
-    def save_events(self):
-        self.save_json_file(SCHEDULE_FILE, self.events)
-
-    def load_templates(self):
-        return self.load_json_file(TEMPLATES_FILE, {})
-
-    def load_config(self):
-        return self.load_json_file(CONFIG_FILE, {})
-
-    def load_recurring_schedules(self):
-        """Load recurring schedules configuration"""
-        data = self.load_json_file(RECURRING_CONFIG_FILE, {"schedules": []})
-        log.info(f"[RECURRING] Loaded {len(data.get('schedules', []))} recurring schedules from file")
-        return data
-        
-    def save_recurring_schedules(self):
-        """Save recurring schedules configuration"""
-        log.info("[RECURRING] Saved recurring schedules to file")
-        self.save_json_file(RECURRING_CONFIG_FILE, self.recurring_schedules)
-
-    async def log_schedule_creation(self, interaction, event):
-        try:
-            log_channel_id = self.config.get("log_channel")
-            if not log_channel_id:
-                return
-            
-            log_channel = self.bot.get_channel(log_channel_id)
-            if not log_channel:
-                log.warning(f"Could not find log channel with ID: {log_channel_id}")
-                return
-            
             start_dt = datetime.fromisoformat(event["start"])
             end_dt = datetime.fromisoformat(event["end"])
             
-            embed = discord.Embed(
-                title="📅 Schedule Created",
-                color=0x5865F2,
-                timestamp=datetime.now(SERVER_TIMEZONE)
-            )
-            embed.add_field(name="User", value=f"{interaction.user.mention} ({interaction.user.id})", inline=False)
-            embed.add_field(name="Channel", value=f"#{interaction.channel.name}", inline=True)
-            embed.add_field(name="Template", value=event["template"], inline=True)
-            embed.add_field(name="Type", value=event.get("type", "one_time").replace("_", " ").title(), inline=True)
+            self.start_date.default = start_dt.strftime("%Y-%m-%d")
+            self.start_time.default = start_dt.strftime("%H:%M")
+            self.end_date.default = end_dt.strftime("%Y-%m-%d")
+            self.end_time.default = end_dt.strftime("%H:%M")
+            self.interval.default = str(event.get("interval", 30))
+        except:
+            pass
+    
+    start_date = discord.ui.TextInput(
+        label="Start Date",
+        placeholder="YYYY-MM-DD",
+        required=True,
+        max_length=10
+    )
+    
+    start_time = discord.ui.TextInput(
+        label="Start Time",
+        placeholder="HH:MM",
+        required=True,
+        max_length=5
+    )
+    
+    end_date = discord.ui.TextInput(
+        label="End Date",
+        placeholder="YYYY-MM-DD",
+        required=True,
+        max_length=10
+    )
+    
+    end_time = discord.ui.TextInput(
+        label="End Time",
+        placeholder="HH:MM",
+        required=True,
+        max_length=5
+    )
+    
+    interval = discord.ui.TextInput(
+        label="Interval (minutes)",
+        placeholder="30",
+        required=True,
+        max_length=4
+    )
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            start_dt = datetime.fromisoformat(
+                f"{self.start_date.value} {self.start_time.value}"
+            ).replace(second=0, microsecond=0, tzinfo=SERVER_TIMEZONE)
             
-            if event.get("type") == "one_time":
-                embed.add_field(name="Interval", value=f"{event['interval']} minutes", inline=True)
-                embed.add_field(name="Start Time", value=start_dt.strftime("%Y-%m-%d %H:%M %Z"), inline=True)
-                embed.add_field(name="End Time", value=end_dt.strftime("%Y-%m-%d %H:%M %Z"), inline=True)
-                
-            embed.set_footer(text=f"Event ID: {len(self.events)}")
-            await log_channel.send(embed=embed)
+            end_dt = datetime.fromisoformat(
+                f"{self.end_date.value} {self.end_time.value}"
+            ).replace(second=0, microsecond=0, tzinfo=SERVER_TIMEZONE)
+            
+            interval_minutes = max(1, int(self.interval.value))
+            
+            # Update event
+            events = self.schedule_cog.load_events(self.guild_id)
+            events[self.event_index]["start"] = start_dt.isoformat()
+            events[self.event_index]["end"] = end_dt.isoformat()
+            events[self.event_index]["interval"] = interval_minutes
+            events[self.event_index]["next_send"] = start_dt.isoformat()
+            
+            self.schedule_cog.save_events(self.guild_id, events)
+            
+            embed = discord.Embed(
+                title="✅ Schedule Updated",
+                description=f"Template: `{self.event['template']}`",
+                color=0x57F287
+            )
+            embed.add_field(name="Start", value=start_dt.strftime("%Y-%m-%d %H:%M"), inline=True)
+            embed.add_field(name="End", value=end_dt.strftime("%Y-%m-%d %H:%M"), inline=True)
+            embed.add_field(name="Interval", value=f"{interval_minutes} min", inline=True)
+            
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            
         except Exception as e:
-            log.error(f"Error logging schedule creation: {e}", exc_info=True)
+            await interaction.response.send_message(
+                f"❌ Error: {e}",
+                ephemeral=True
+            )
 
+
+class EditRecurringModal(discord.ui.Modal, title="Edit Recurring Schedule"):
+    """Modal do edycji recurring schedule"""
+    
+    def __init__(self, schedule_cog, schedule: dict, guild_id: int):
+        super().__init__()
+        self.schedule_cog = schedule_cog
+        self.schedule = schedule
+        self.guild_id = guild_id
+        self.schedule_name = schedule.get("name")
+        
+        # Pre-fill with current values
+        if schedule.get("is_multiday"):
+            mc = schedule.get("multiday_config", {})
+            self.start_day.default = str(mc.get("start_day", 4))
+            self.start_time.default = mc.get("start_time", "14:00")
+            self.end_day.default = str(mc.get("end_day", 5))
+            self.end_time.default = mc.get("end_time", "20:00")
+    
+    start_day = discord.ui.TextInput(
+        label="Start Day (0-6, Mon=0, Sun=6)",
+        placeholder="4",
+        required=True,
+        max_length=1
+    )
+    
+    start_time = discord.ui.TextInput(
+        label="Start Time",
+        placeholder="18:00",
+        required=True,
+        max_length=5
+    )
+    
+    end_day = discord.ui.TextInput(
+        label="End Day (0-6)",
+        placeholder="5",
+        required=True,
+        max_length=1
+    )
+    
+    end_time = discord.ui.TextInput(
+        label="End Time",
+        placeholder="22:00",
+        required=True,
+        max_length=5
+    )
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            start_day = int(self.start_day.value)
+            end_day = int(self.end_day.value)
+            
+            if not (0 <= start_day <= 6 and 0 <= end_day <= 6):
+                await interaction.response.send_message(
+                    "❌ Days must be 0-6",
+                    ephemeral=True
+                )
+                return
+            
+            # Validate times
+            datetime.strptime(self.start_time.value, "%H:%M")
+            datetime.strptime(self.end_time.value, "%H:%M")
+            
+            # Update schedule
+            recurring_data = self.schedule_cog.load_recurring_schedules(self.guild_id)
+            
+            for schedule in recurring_data.get("schedules", []):
+                if schedule.get("name") == self.schedule_name:
+                    schedule["is_multiday"] = True
+                    schedule["multiday_config"] = {
+                        "start_day": start_day,
+                        "start_time": self.start_time.value,
+                        "end_day": end_day,
+                        "end_time": self.end_time.value
+                    }
+                    break
+            
+            self.schedule_cog.save_recurring_schedules(self.guild_id, recurring_data)
+            
+            days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+            
+            embed = discord.Embed(
+                title="✅ Recurring Schedule Updated",
+                description=f"`{self.schedule_name}`",
+                color=0x57F287
+            )
+            embed.add_field(
+                name="Time Range",
+                value=f"{days[start_day]} {self.start_time.value} → {days[end_day]} {self.end_time.value}",
+                inline=False
+            )
+            
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            await interaction.response.send_message(
+                f"❌ Error: {e}",
+                ephemeral=True
+            )
+
+
+class ScheduleSelectView(discord.ui.View):
+    """View do wyboru schedule do edycji"""
+    
+    def __init__(self, schedule_cog, events: list, guild_id: int):
+        super().__init__(timeout=300)
+        self.schedule_cog = schedule_cog
+        self.events = events
+        self.guild_id = guild_id
+        
+        options = []
+        for i, event in enumerate(events):
+            end_dt = datetime.fromisoformat(event["end"])
+            now = datetime.now(SERVER_TIMEZONE)
+            status = "🟢" if now <= end_dt else "🔴"
+            
+            label = f"{status} {event['template']}"[:100]
+            description = f"Ends: {end_dt.strftime('%Y-%m-%d %H:%M')}"
+            
+            options.append(discord.SelectOption(
+                label=label,
+                description=description,
+                value=str(i)
+            ))
+        
+        if options:
+            self.schedule_select.options = options[:25]
+        else:
+            self.schedule_select.disabled = True
+    
+    @discord.ui.select(placeholder="Choose schedule to edit...")
+    async def schedule_select(self, interaction: discord.Interaction, select: discord.ui.Select):
+        event_index = int(select.values[0])
+        event = self.events[event_index]
+        
+        modal = EditScheduleModal(self.schedule_cog, event_index, event, self.guild_id)
+        await interaction.response.send_modal(modal)
+        
+class Schedule(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.timezone = SERVER_TIMEZONE
+        self.check_events.start()
+        self.check_recurring_schedules.start()
+        logger.info("✅ Schedule cog loaded (multi-guild)")
+
+    def get_data_path(self, guild_id: int, filename: str) -> Path:
+        return self.bot.config_manager.get_data_path(guild_id, "schedules", filename)
+
+    def load_json_file(self, guild_id: int, filename: str, default: Any) -> Any:
+        try:
+            path = self.get_data_path(guild_id, filename)
+            if path.exists():
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception as e:
+            logger.error(f"Error loading {filename} for {guild_id}: {e}")
+        return default
+
+    def save_json_file(self, guild_id: int, filename: str, data: Any):
+        try:
+            path = self.get_data_path(guild_id, filename)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"Error saving {filename} for {guild_id}: {e}")
+
+    def load_events(self, guild_id: int) -> list:
+        return self.load_json_file(guild_id, "scheduled_events.json", [])
+
+    def save_events(self, guild_id: int, events: list):
+        self.save_json_file(guild_id, "scheduled_events.json", events)
+
+    def load_templates(self, guild_id: int) -> dict:
+        return self.load_json_file(guild_id, "templates.json", {})
+
+    def save_templates(self, guild_id: int, templates: dict):
+        self.save_json_file(guild_id, "templates.json", templates)
+
+    def load_recurring_schedules(self, guild_id: int) -> dict:
+        return self.load_json_file(guild_id, "recurring_schedules.json", {"schedules": []})
+        
+    def save_recurring_schedules(self, guild_id: int, data: dict):
+        self.save_json_file(guild_id, "recurring_schedules.json", data)
+
+    async def log_schedule_creation(self, interaction: discord.Interaction, event: dict):
+        try:
+            config = self.bot.get_guild_config(interaction.guild.id)
+            log_id = config.get("log_channel")
+            if not log_id:
+                return
+            log_ch = self.bot.get_channel(log_id)
+            if not log_ch:
+                return
+            embed = discord.Embed(title="📅 Schedule Created", color=0x5865F2, timestamp=datetime.now(SERVER_TIMEZONE))
+            embed.add_field(name="User", value=f"{interaction.user.mention}", inline=False)
+            embed.add_field(name="Template", value=event["template"], inline=True)
+            await log_ch.send(embed=embed)
+        except Exception as e:
+            logger.error(f"Error logging: {e}")
+
+    # [CONTINUED IN PART 2 - Commands]
+    @app_commands.command(name="create-schedule-template", description="[Admin] Build custom message template")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def create_template(self, interaction: discord.Interaction):
+        if not self.bot.config_manager.is_module_enabled(interaction.guild.id, "schedule"):
+            await interaction.response.send_message("❌ Module not enabled! Use `/modules enable schedule`", ephemeral=True)
+            return
+        view = TemplateBuilder(interaction.user.id, self, interaction.guild.id)
+        await interaction.response.send_message("**📝 Template Builder**\nUse buttons to build your template!", embed=view.create_preview_embed(), view=view, ephemeral=True)
+
+    @app_commands.command(name="schedule", description="Schedule event using template")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def schedule(self, interaction: discord.Interaction):
+        if not self.bot.config_manager.is_module_enabled(interaction.guild.id, "schedule"):
+            await interaction.response.send_message("❌ Module not enabled!", ephemeral=True)
+            return
+        templates = self.load_templates(interaction.guild.id)
+        if not templates:
+            await interaction.response.send_message("❌ No templates! Create one with `/create-template`", ephemeral=True)
+            return
+        view = TemplateSelectView(self, templates, interaction.guild.id)
+        await interaction.response.send_message("📅 **Schedule Event**\nSelect template:", view=view, ephemeral=True)
+
+    @app_commands.command(name="list-schedule-templates", description="List all templates")
+    async def list_templates(self, interaction: discord.Interaction):
+        templates = self.load_templates(interaction.guild.id)
+        if not templates:
+            await interaction.response.send_message("📋 No templates saved.", ephemeral=True)
+            return
+        embed = discord.Embed(title="📋 Templates", color=0x5865F2)
+        embed.description = "\n".join([f"• `{name}`" for name in templates.keys()])
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="delete-schedule-template", description="[Admin] Delete template")
+    @app_commands.describe(name="Template name")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def delete_template(self, interaction: discord.Interaction, name: str):
+        templates = self.load_templates(interaction.guild.id)
+        if name not in templates:
+            await interaction.response.send_message(f"❌ Template `{name}` not found!", ephemeral=True)
+            return
+        del templates[name]
+        self.save_templates(interaction.guild.id, templates)
+        await interaction.response.send_message(f"✅ Deleted template `{name}`", ephemeral=True)
+
+    @app_commands.command(name="schedule-list", description="List active schedules")
+    async def schedule_list(self, interaction: discord.Interaction):
+        events = self.load_events(interaction.guild.id)
+        guild_events = [e for e in events if e.get("guild_id") == interaction.guild.id]
+        embed = discord.Embed(title="📅 Active Schedules", color=0x5865F2)
+        if not guild_events:
+            embed.description = "No active schedules"
+        else:
+            lines = []
+            for i, e in enumerate(guild_events, 1):
+                end = datetime.fromisoformat(e["end"])
+                lines.append(f"**{i}. {e['template']}**\nEnds: {end.strftime('%Y-%m-%d %H:%M')}")
+            embed.description = "\n\n".join(lines)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="schedule-clear", description="[Admin] Clear all schedules")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def schedule_clear(self, interaction: discord.Interaction):
+        events = self.load_events(interaction.guild.id)
+        count = len([e for e in events if e.get("guild_id") == interaction.guild.id])
+        new_events = [e for e in events if e.get("guild_id") != interaction.guild.id]
+        self.save_events(interaction.guild.id, new_events)
+        await interaction.response.send_message(f"✅ Cleared {count} schedules", ephemeral=True)
+
+    @app_commands.command(name="setup-schedule", description="[Admin] Configure schedule module")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def setup_schedule(self, interaction: discord.Interaction):
+        if not self.bot.config_manager.is_module_enabled(interaction.guild.id, "schedule"):
+            await interaction.response.send_message("❌ First enable: `/modules enable schedule`", ephemeral=True)
+            return
+        embed = discord.Embed(title="✅ Schedule Module", description="Module is ready to use!", color=0x57F287)
+        embed.add_field(name="📝 Commands", value="• `/create-template` - Build templates\n• `/schedule` - Schedule events\n• `/list-templates` - View templates", inline=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        
+    @app_commands.command(
+        name="schedule-recurring",
+        description="[Admin] Create recurring schedule (e.g., every Friday-Saturday)"
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def schedule_recurring(self, interaction: discord.Interaction):
+        """Tworzy recurring schedule"""
+        
+        if not self.bot.config_manager.is_module_enabled(interaction.guild.id, "schedule"):
+            await interaction.response.send_message(
+                "❌ Module not enabled! Use `/modules enable schedule`",
+                ephemeral=True
+            )
+            return
+        
+        templates = self.load_templates(interaction.guild.id)
+        
+        if not templates:
+            await interaction.response.send_message(
+                "❌ No templates! Create one with `/create-template` first.",
+                ephemeral=True
+            )
+            return
+        
+        view = TemplateSelectRecurringView(self, templates, interaction.guild.id)
+        
+        embed = discord.Embed(
+            title="🔄 Create Recurring Schedule",
+            description=(
+                "Create a schedule that repeats weekly.\n\n"
+                "**Examples:**\n"
+                "• Friday 18:00 → Saturday 22:00\n"
+                "• Monday 09:00 → Friday 17:00\n"
+                "• Saturday 14:00 → Sunday 20:00\n\n"
+                "**Day Numbers:**\n"
+                "Monday=0, Tuesday=1, Wednesday=2, Thursday=3,\n"
+                "Friday=4, Saturday=5, Sunday=6"
+            ),
+            color=0x5865F2
+        )
+        
+        await interaction.response.send_message(
+            embed=embed,
+            view=view,
+            ephemeral=True
+        )
+
+    @app_commands.command(
+        name="recurring-list",
+        description="List all recurring schedules"
+    )
+    async def recurring_list(self, interaction: discord.Interaction):
+        """Lista recurring schedules"""
+        
+        recurring_data = self.load_recurring_schedules(interaction.guild.id)
+        schedules = recurring_data.get("schedules", [])
+        
+        if not schedules:
+            await interaction.response.send_message(
+                "📋 No recurring schedules configured.",
+                ephemeral=True
+            )
+            return
+        
+        days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        
+        embed = discord.Embed(
+            title="🔄 Recurring Schedules",
+            color=0x5865F2
+        )
+        
+        for i, schedule in enumerate(schedules, 1):
+            status = "✅ Enabled" if schedule.get("enabled", True) else "❌ Disabled"
+            
+            if schedule.get("is_multiday"):
+                mc = schedule.get("multiday_config", {})
+                time_range = (
+                    f"{days[mc.get('start_day', 0)]} {mc.get('start_time', '00:00')} → "
+                    f"{days[mc.get('end_day', 0)]} {mc.get('end_time', '23:59')}"
+                )
+            else:
+                sched_days = schedule.get("days", [])
+                day_names = ", ".join([days[d] for d in sched_days])
+                time_range = f"{day_names}: {schedule.get('start_time', '00:00')}-{schedule.get('end_time', '23:59')}"
+            
+            channel_id = schedule.get("channel_id")
+            channel_mention = f"<#{channel_id}>" if channel_id else "Not set"
+            
+            embed.add_field(
+                name=f"{i}. {schedule.get('name', 'Unnamed')}",
+                value=(
+                    f"**Status:** {status}\n"
+                    f"**Time:** {time_range}\n"
+                    f"**Template:** {schedule.get('template', 'Not set')}\n"
+                    f"**Channel:** {channel_mention}\n"
+                    f"**Interval:** Every {schedule.get('interval_hours', 2)}h"
+                ),
+                inline=False
+            )
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(
+        name="recurring-toggle",
+        description="[Admin] Enable/disable recurring schedule"
+    )
+    @app_commands.describe(name="Schedule name to toggle")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def recurring_toggle(self, interaction: discord.Interaction, name: str):
+        """Włącza/wyłącza recurring schedule"""
+        
+        recurring_data = self.load_recurring_schedules(interaction.guild.id)
+        
+        for schedule in recurring_data.get("schedules", []):
+            if schedule.get("name", "").lower() == name.lower():
+                schedule["enabled"] = not schedule.get("enabled", True)
+                self.save_recurring_schedules(interaction.guild.id, recurring_data)
+                
+                status = "✅ enabled" if schedule["enabled"] else "❌ disabled"
+                await interaction.response.send_message(
+                    f"Schedule `{name}` is now {status}",
+                    ephemeral=True
+                )
+                return
+        
+        await interaction.response.send_message(
+            f"❌ Recurring schedule `{name}` not found!",
+            ephemeral=True
+        )
+
+    @app_commands.command(
+        name="recurring-delete",
+        description="[Admin] Delete recurring schedule"
+    )
+    @app_commands.describe(name="Schedule name to delete")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def recurring_delete(self, interaction: discord.Interaction, name: str):
+        """Usuwa recurring schedule"""
+        
+        recurring_data = self.load_recurring_schedules(interaction.guild.id)
+        schedules = recurring_data.get("schedules", [])
+        
+        for i, schedule in enumerate(schedules):
+            if schedule.get("name", "").lower() == name.lower():
+                schedules.pop(i)
+                self.save_recurring_schedules(interaction.guild.id, recurring_data)
+                
+                await interaction.response.send_message(
+                    f"✅ Deleted recurring schedule `{name}`",
+                    ephemeral=True
+                )
+                return
+        
+        await interaction.response.send_message(
+            f"❌ Recurring schedule `{name}` not found!",
+            ephemeral=True
+        )
+
+    @app_commands.command(
+        name="recurring-interval",
+        description="[Admin] Change interval for recurring schedule"
+    )
+    @app_commands.describe(name="Schedule name")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def recurring_interval(self, interaction: discord.Interaction, name: str):
+        """Zmienia interwał recurring schedule"""
+        
+        recurring_data = self.load_recurring_schedules(interaction.guild.id)
+        
+        # Check if schedule exists
+        found = False
+        for schedule in recurring_data.get("schedules", []):
+            if schedule.get("name", "").lower() == name.lower():
+                found = True
+                break
+        
+        if not found:
+            await interaction.response.send_message(
+                f"❌ Recurring schedule `{name}` not found!",
+                ephemeral=True
+            )
+            return
+        
+        modal = RecurringIntervalModal(self, name, interaction.guild.id)
+        await interaction.response.send_modal(modal)
+
+    @app_commands.command(
+        name="recurring-test",
+        description="[Admin] Test if recurring schedule should send now"
+    )
+    @app_commands.describe(name="Schedule name to test")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def recurring_test(self, interaction: discord.Interaction, name: str):
+        """Testuje czy recurring schedule powinien wysłać teraz"""
+        
+        recurring_data = self.load_recurring_schedules(interaction.guild.id)
+        now = datetime.now(self.timezone)
+        
+        for schedule in recurring_data.get("schedules", []):
+            if schedule.get("name", "").lower() == name.lower():
+                should_send = self.should_send_recurring_message(schedule, now)
+                
+                days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+                current_day = days[now.weekday()]
+                current_time = now.strftime("%H:%M:%S")
+                
+                embed = discord.Embed(
+                    title=f"🧪 Test: {name}",
+                    color=0x57F287 if should_send else 0xED4245
+                )
+                
+                embed.add_field(
+                    name="Current Time",
+                    value=f"{current_day}, {current_time}",
+                    inline=False
+                )
+                
+                if schedule.get("is_multiday"):
+                    mc = schedule.get("multiday_config", {})
+                    embed.add_field(
+                        name="Schedule Window",
+                        value=(
+                            f"{days[mc.get('start_day', 0)]} {mc.get('start_time')} → "
+                            f"{days[mc.get('end_day', 0)]} {mc.get('end_time')}"
+                        ),
+                        inline=False
+                    )
+                
+                embed.add_field(
+                    name="Should Send?",
+                    value="✅ YES" if should_send else "❌ NO",
+                    inline=True
+                )
+                
+                embed.add_field(
+                    name="Enabled?",
+                    value="✅ YES" if schedule.get("enabled", True) else "❌ NO",
+                    inline=True
+                )
+                
+                # Check interval
+                last_sent = schedule.get("last_sent")
+                if last_sent:
+                    last_sent_dt = datetime.fromisoformat(last_sent)
+                    minutes_ago = (now - last_sent_dt).total_seconds() / 60
+                    interval_minutes = schedule.get("interval_hours", 2) * 60
+                    
+                    embed.add_field(
+                        name="Last Sent",
+                        value=f"{int(minutes_ago)} minutes ago (interval: {interval_minutes} min)",
+                        inline=False
+                    )
+                
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+        
+        await interaction.response.send_message(
+            f"❌ Recurring schedule `{name}` not found!",
+            ephemeral=True
+        )
+
+    @app_commands.command(
+        name="edit-template",
+        description="[Admin] Edit existing template"
+    )
+    @app_commands.describe(name="Template name to edit")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def edit_template(self, interaction: discord.Interaction, name: str):
+        """Edytuje istniejący template"""
+        
+        templates = self.load_templates(interaction.guild.id)
+        
+        if name not in templates:
+            await interaction.response.send_message(
+                f"❌ Template `{name}` not found!",
+                ephemeral=True
+            )
+            return
+        
+        # Load template data into builder
+        template_data = templates[name]
+        
+        view = TemplateBuilder(interaction.user.id, self, interaction.guild.id)
+        view.template_data = template_data
+        view.template_name = name
+        
+        embed = view.create_preview_embed()
+        
+        await interaction.response.send_message(
+            f"**📝 Editing Template: {name}**\n\nUse buttons to modify template:",
+            embed=embed,
+            view=view,
+            ephemeral=True
+        )
+
+    @app_commands.command(
+        name="view-template",
+        description="View template preview"
+    )
+    @app_commands.describe(name="Template name to view")
+    async def view_template(self, interaction: discord.Interaction, name: str):
+        """Podgląd template"""
+        
+        templates = self.load_templates(interaction.guild.id)
+        
+        if name not in templates:
+            await interaction.response.send_message(
+                f"❌ Template `{name}` not found!",
+                ephemeral=True
+            )
+            return
+        
+        template_data = templates[name]
+        
+        # Create embed manually to show placeholders
+        embed_data = template_data.get("embed", {})
+        
+        color_hex = embed_data.get("color", "#d07d23").replace("#", "")
+        color = discord.Color(int(color_hex, 16))
+        
+        embed = discord.Embed(
+            title=embed_data.get("title", "No title"),
+            description=embed_data.get("description", "No description"),
+            color=color
+        )
+        
+        # Author
+        if embed_data.get("author"):
+            author_data = embed_data["author"]
+            embed.set_author(
+                name=author_data.get("name", ""),
+                icon_url=author_data.get("icon_url")
+            )
+        
+        # Fields
+        for field in embed_data.get("fields", []):
+            embed.add_field(
+                name=field.get("name", "Field"),
+                value=field.get("value", "Value"),
+                inline=field.get("inline", False)
+            )
+        
+        # Images
+        if embed_data.get("thumbnail"):
+            embed.set_thumbnail(url=embed_data["thumbnail"])
+        
+        if embed_data.get("image"):
+            embed.set_image(url=embed_data["image"])
+        
+        # Footer
+        if embed_data.get("footer"):
+            footer_data = embed_data["footer"]
+            if isinstance(footer_data, dict):
+                embed.set_footer(
+                    text=footer_data.get("text", ""),
+                    icon_url=footer_data.get("icon_url")
+                )
+            else:
+                embed.set_footer(text=footer_data)
+        
+        embed.set_footer(text=f"Template: {name} (Preview with placeholders)")
+        
+        # Show content if exists
+        content = template_data.get("content")
+        message_text = f"**📝 Template: {name}**\n\n"
+        if content:
+            message_text += f"**Content:**\n{content}\n\n"
+        
+        await interaction.response.send_message(
+            message_text,
+            embed=embed,
+            ephemeral=True
+        )
+
+    @app_commands.command(
+        name="copy-template",
+        description="[Admin] Copy template to new name"
+    )
+    @app_commands.describe(
+        source="Source template name",
+        destination="New template name"
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def copy_template(
+        self,
+        interaction: discord.Interaction,
+        source: str,
+        destination: str
+    ):
+        """Kopiuje template"""
+        
+        templates = self.load_templates(interaction.guild.id)
+        
+        if source not in templates:
+            await interaction.response.send_message(
+                f"❌ Source template `{source}` not found!",
+                ephemeral=True
+            )
+            return
+        
+        if destination in templates:
+            await interaction.response.send_message(
+                f"❌ Template `{destination}` already exists!",
+                ephemeral=True
+            )
+            return
+        
+        # Copy template
+        templates[destination] = templates[source].copy()
+        self.save_templates(interaction.guild.id, templates)
+        
+        await interaction.response.send_message(
+            f"✅ Template copied: `{source}` → `{destination}`",
+            ephemeral=True
+        )
+
+    @app_commands.command(
+        name="rename-template",
+        description="[Admin] Rename template"
+    )
+    @app_commands.describe(
+        old_name="Current template name",
+        new_name="New template name"
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def rename_template(
+        self,
+        interaction: discord.Interaction,
+        old_name: str,
+        new_name: str
+    ):
+        """Zmienia nazwę template"""
+        
+        templates = self.load_templates(interaction.guild.id)
+        
+        if old_name not in templates:
+            await interaction.response.send_message(
+                f"❌ Template `{old_name}` not found!",
+                ephemeral=True
+            )
+            return
+        
+        if new_name in templates:
+            await interaction.response.send_message(
+                f"❌ Template `{new_name}` already exists!",
+                ephemeral=True
+            )
+            return
+        
+        # Rename
+        templates[new_name] = templates.pop(old_name)
+        self.save_templates(interaction.guild.id, templates)
+        
+        await interaction.response.send_message(
+            f"✅ Template renamed: `{old_name}` → `{new_name}`",
+            ephemeral=True
+        )
+
+    @app_commands.command(
+        name="schedule-edit",
+        description="[Admin] Edit one-time schedule"
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def schedule_edit(self, interaction: discord.Interaction):
+        """Edytuje one-time schedule"""
+        
+        events = self.load_events(interaction.guild.id)
+        guild_events = [
+            e for e in events 
+            if e.get("guild_id") == interaction.guild.id and e.get("type", "one_time") == "one_time"
+        ]
+        
+        if not guild_events:
+            await interaction.response.send_message(
+                "📋 No one-time schedules to edit.\nCreate one with `/schedule`",
+                ephemeral=True
+            )
+            return
+        
+        view = ScheduleSelectView(self, guild_events, interaction.guild.id)
+        
+        embed = discord.Embed(
+            title="📅 Edit Schedule",
+            description="Select a schedule to edit:",
+            color=0x5865F2
+        )
+        
+        await interaction.response.send_message(
+            embed=embed,
+            view=view,
+            ephemeral=True
+        )
+
+    @app_commands.command(
+        name="recurring-edit",
+        description="[Admin] Edit recurring schedule"
+    )
+    @app_commands.describe(name="Schedule name to edit")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def recurring_edit(self, interaction: discord.Interaction, name: str):
+        """Edytuje recurring schedule"""
+        
+        recurring_data = self.load_recurring_schedules(interaction.guild.id)
+        
+        schedule = None
+        for s in recurring_data.get("schedules", []):
+            if s.get("name", "").lower() == name.lower():
+                schedule = s
+                break
+        
+        if not schedule:
+            await interaction.response.send_message(
+                f"❌ Recurring schedule `{name}` not found!",
+                ephemeral=True
+            )
+            return
+        
+        modal = EditRecurringModal(self, schedule, interaction.guild.id)
+        await interaction.response.send_modal(modal)
+
+    @app_commands.command(
+        name="schedule-change-template",
+        description="[Admin] Change template for schedule"
+    )
+    @app_commands.describe(
+        schedule_index="Schedule number from /schedule-list",
+        template_name="New template name"
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def schedule_change_template(
+        self,
+        interaction: discord.Interaction,
+        schedule_index: int,
+        template_name: str
+    ):
+        """Zmienia template dla schedule"""
+        
+        events = self.load_events(interaction.guild.id)
+        guild_events = [
+            e for e in events 
+            if e.get("guild_id") == interaction.guild.id
+        ]
+        
+        if schedule_index < 1 or schedule_index > len(guild_events):
+            await interaction.response.send_message(
+                f"❌ Invalid index! Use 1-{len(guild_events)}",
+                ephemeral=True
+            )
+            return
+        
+        templates = self.load_templates(interaction.guild.id)
+        if template_name not in templates:
+            await interaction.response.send_message(
+                f"❌ Template `{template_name}` not found!",
+                ephemeral=True
+            )
+            return
+        
+        # Find event in original list
+        event_to_update = guild_events[schedule_index - 1]
+        for event in events:
+            if event == event_to_update:
+                old_template = event["template"]
+                event["template"] = template_name
+                break
+        
+        self.save_events(interaction.guild.id, events)
+        
+        await interaction.response.send_message(
+            f"✅ Schedule #{schedule_index} template changed:\n`{old_template}` → `{template_name}`",
+            ephemeral=True
+        )
+
+    @app_commands.command(
+        name="recurring-change-template",
+        description="[Admin] Change template for recurring schedule"
+    )
+    @app_commands.describe(
+        schedule_name="Recurring schedule name",
+        template_name="New template name"
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def recurring_change_template(
+        self,
+        interaction: discord.Interaction,
+        schedule_name: str,
+        template_name: str
+    ):
+        """Zmienia template dla recurring schedule"""
+        
+        templates = self.load_templates(interaction.guild.id)
+        if template_name not in templates:
+            await interaction.response.send_message(
+                f"❌ Template `{template_name}` not found!",
+                ephemeral=True
+            )
+            return
+        
+        recurring_data = self.load_recurring_schedules(interaction.guild.id)
+        
+        for schedule in recurring_data.get("schedules", []):
+            if schedule.get("name", "").lower() == schedule_name.lower():
+                old_template = schedule.get("template", "None")
+                schedule["template"] = template_name
+                self.save_recurring_schedules(interaction.guild.id, recurring_data)
+                
+                await interaction.response.send_message(
+                    f"✅ Recurring schedule `{schedule_name}` template changed:\n`{old_template}` → `{template_name}`",
+                    ephemeral=True
+                )
+                return
+        
+        await interaction.response.send_message(
+            f"❌ Recurring schedule `{schedule_name}` not found!",
+            ephemeral=True
+        )
+
+    # Autocomplete helpers
+    @edit_template.autocomplete('name')
+    @view_template.autocomplete('name')
+    @copy_template.autocomplete('source')
+    @copy_template.autocomplete('destination')
+    @rename_template.autocomplete('old_name')
+    @rename_template.autocomplete('new_name')
+    @schedule_change_template.autocomplete('template_name')
+    @recurring_change_template.autocomplete('template_name')
+    async def template_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        """Autocomplete dla nazw templatek"""
+        
+        templates = self.load_templates(interaction.guild.id)
+        
+        choices = []
+        for template_name in templates.keys():
+            if current.lower() in template_name.lower():
+                choices.append(app_commands.Choice(
+                    name=template_name,
+                    value=template_name
+                ))
+        
+        return choices[:25]
+    
+    @recurring_edit.autocomplete('name')
+    @recurring_change_template.autocomplete('schedule_name')
+    async def recurring_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        """Autocomplete dla recurring schedules"""
+        
+        recurring_data = self.load_recurring_schedules(interaction.guild.id)
+        
+        choices = []
+        for schedule in recurring_data.get("schedules", []):
+            name = schedule.get("name", "")
+            if current.lower() in name.lower():
+                status = "✅" if schedule.get("enabled", True) else "❌"
+                choices.append(app_commands.Choice(
+                    name=f"{status} {name}",
+                    value=name
+                ))
+        
+        return choices[:25]
+    
     @tasks.loop(seconds=10)
     async def check_events(self):
-        """Check one-time events with dynamic reminder intervals"""
+        """Sprawdza one-time eventy dla wszystkich serwerów"""
         now = datetime.now(SERVER_TIMEZONE)
-        events_to_remove = []
         
-        for event in self.events:
+        for guild in self.bot.guilds:
+            if not self.bot.config_manager.is_module_enabled(guild.id, "schedule"):
+                continue
+            
+            try:
+                await self._check_events_for_guild(guild, now)
+            except Exception as e:
+                logger.error(f"Error checking events for guild {guild.id}: {e}")
+
+    async def _check_events_for_guild(self, guild: discord.Guild, now: datetime):
+        """Sprawdza eventy dla konkretnego serwera"""
+        guild_id = guild.id
+        events = self.load_events(guild_id)
+        events_to_remove = []
+        modified = False
+        
+        for event in events:
+            # Skip events from other guilds (safety check)
+            if event.get("guild_id") != guild_id:
+                continue
+                
             if event.get("type", "one_time") != "one_time":
                 continue
                 
@@ -243,222 +1816,130 @@ class Schedule(commands.Cog):
                 start_time = datetime.fromisoformat(event["start"])
                 end_time = datetime.fromisoformat(event["end"])
 
+                # Remove expired events
                 if now > end_time:
                     events_to_remove.append(event)
                     continue
 
                 if start_time <= now <= end_time:
-                    # Calculate time remaining until end
                     time_remaining = end_time - now
                     minutes_remaining = time_remaining.total_seconds() / 60
                     
-                    # Determine current interval based on time remaining
-                    current_interval = self.get_dynamic_interval(minutes_remaining, event.get("interval", 30))
+                    current_interval = self.get_dynamic_interval(
+                        minutes_remaining, 
+                        event.get("interval", 30)
+                    )
                     
                     next_send_time_str = event.get("next_send")
+                    
+                    # Check if it's time to send
                     if next_send_time_str:
                         next_send_time = datetime.fromisoformat(next_send_time_str)
                         
                         if now >= next_send_time and (now - next_send_time).total_seconds() <= 30:
-                            channel = self.bot.get_channel(event["channel_id"])
-                            template = self.templates.get(event["template"])
+                            channel = guild.get_channel(event["channel_id"])
+                            templates = self.load_templates(guild_id)
+                            template = templates.get(event["template"])
+                            
                             if channel and template:
-                                log.info(f"[EVENT] Sending '{event['template']}' to channel #{channel.name} (Dynamic: {current_interval}min interval, {minutes_remaining:.1f}min remaining)")
-                                await self.send_template(channel, template, end_time, start_time=next_send_time)
+                                logger.info(
+                                    f"[EVENT] Sending '{event['template']}' to "
+                                    f"#{channel.name} on {guild.name}"
+                                )
+                                await self.send_template(
+                                    channel, template, end_time, start_time=next_send_time
+                                )
                                 event["last_sent"] = now.isoformat()
+                                modified = True
                     
-                    # Calculate next send time using dynamic interval
+                    # Calculate next send time
                     if next_send_time_str:
                         next_send_time = datetime.fromisoformat(next_send_time_str)
                         while now >= next_send_time:
                             next_send_time += timedelta(minutes=current_interval)
                         
-                        # Set next_send to the next future time or None if expired
-                        event["next_send"] = next_send_time.isoformat() if next_send_time <= end_time else None
+                        event["next_send"] = (
+                            next_send_time.isoformat() 
+                            if next_send_time <= end_time 
+                            else None
+                        )
+                        modified = True
                     else:
-                        # First send - use dynamic interval for next
-                        channel = self.bot.get_channel(event["channel_id"])
-                        template = self.templates.get(event["template"])
+                        # First send
+                        channel = guild.get_channel(event["channel_id"])
+                        templates = self.load_templates(guild_id)
+                        template = templates.get(event["template"])
+                        
                         if channel and template:
-                            log.info(f"[EVENT] First send for '{event['template']}' to channel #{channel.name}")
-                            await self.send_template(channel, template, end_time, start_time=now)
+                            logger.info(
+                                f"[EVENT] First send for '{event['template']}' on {guild.name}"
+                            )
+                            await self.send_template(
+                                channel, template, end_time, start_time=now
+                            )
                             event["last_sent"] = now.isoformat()
-                            next_interval = self.get_dynamic_interval(minutes_remaining - current_interval, event.get("interval", 30))
-                            event["next_send"] = (now + timedelta(minutes=next_interval)).isoformat()
-                        else:
-                            log.warning(f"Missing channel or template for event: {event['template']}")
+                            next_interval = self.get_dynamic_interval(
+                                minutes_remaining - current_interval,
+                                event.get("interval", 30)
+                            )
+                            event["next_send"] = (
+                                now + timedelta(minutes=next_interval)
+                            ).isoformat()
+                            modified = True
                             
             except Exception as e:
-                log.error(f"Error processing event {event.get('template', 'unknown')}: {e}", exc_info=True)
+                logger.error(f"Error processing event for guild {guild_id}: {e}", exc_info=True)
 
+        # Remove expired events
         if events_to_remove:
             for event in events_to_remove:
-                self.events.remove(event)
-            self.save_events()
-            log.info(f"Removed {len(events_to_remove)} expired one-time events.")
-
-    def get_dynamic_interval(self, minutes_remaining, base_interval):
-        """Calculate dynamic interval based on time remaining"""
+                events.remove(event)
+            modified = True
+            logger.info(
+                f"Removed {len(events_to_remove)} expired events for guild {guild_id}"
+            )
         
-        # Final countdown (last 10 minutes)
+        # Save if modified
+        if modified:
+            self.save_events(guild_id, events)
+
+    def get_dynamic_interval(self, minutes_remaining: float, base_interval: int) -> int:
+        """Dynamiczny interwał w zależności od pozostałego czasu"""
         if minutes_remaining <= 10:
             if minutes_remaining <= 1:
-                return 1  # Every minute in final minute
+                return 1
             elif minutes_remaining <= 3:
-                return 1  # Every minute for last 3 minutes
+                return 1
             elif minutes_remaining <= 5:
-                return 2  # Every 2 minutes for last 5 minutes
+                return 2
             else:
-                return 5  # Every 5 minutes for last 10 minutes
-        
-        # Urgent phase (last 30 minutes)
+                return 5
         elif minutes_remaining <= 30:
-            return 10  # Every 10 minutes for last 30 minutes
-        
-        # Normal phase (more than 30 minutes)
+            return 10
         else:
-            return base_interval  # Use original interval from config
-
-    @app_commands.command(name="debug_dynamic_intervals", description="Show dynamic interval logic for active events")
-    async def debug_dynamic_intervals(self, interaction: discord.Interaction):
-        """Debug dynamic interval calculation"""
-        now = datetime.now(SERVER_TIMEZONE)
-        
-        embed = discord.Embed(title="⏰ Dynamic Intervals Debug", color=0xFF6B35)
-        embed.add_field(name="Current Time", value=now.strftime("%Y-%m-%d %H:%M:%S %Z"), inline=False)
-        
-        active_events = []
-        for event in self.events:
-            if event.get("type", "one_time") != "one_time":
-                continue
-                
-            try:
-                start_time = datetime.fromisoformat(event["start"])
-                end_time = datetime.fromisoformat(event["end"])
-                
-                if start_time <= now <= end_time:
-                    time_remaining = end_time - now
-                    minutes_remaining = time_remaining.total_seconds() / 60
-                    hours_remaining = minutes_remaining / 60
-                    
-                    base_interval = event.get("interval", 30)
-                    current_interval = self.get_dynamic_interval(minutes_remaining, base_interval)
-                    
-                    next_send_str = event.get("next_send", "Not set")
-                    if next_send_str != "Not set":
-                        next_send_time = datetime.fromisoformat(next_send_str)
-                        minutes_to_next = (next_send_time - now).total_seconds() / 60
-                    else:
-                        minutes_to_next = 0
-                    
-                    # Determine phase
-                    if minutes_remaining <= 10:
-                        phase = "🔴 FINAL COUNTDOWN"
-                    elif minutes_remaining <= 30:
-                        phase = "🟠 URGENT PHASE"
-                    else:
-                        phase = "🟢 NORMAL PHASE"
-                    
-                    status = f"""
-**{event['template']}**
-• Phase: {phase}
-• Time remaining: {int(hours_remaining)}h {int(minutes_remaining % 60)}m
-• Base interval: {base_interval} min
-• Current interval: {current_interval} min
-• Next send in: {minutes_to_next:.1f} min
-• End time: {end_time.strftime('%H:%M')}
-                    """
-                    
-                    active_events.append(status.strip())
-                    
-            except Exception as e:
-                active_events.append(f"**{event.get('template', 'Unknown')}** - Error: {e}")
-        
-        if active_events:
-            embed.add_field(name="Active Events", value="\n\n".join(active_events), inline=False)
-        else:
-            embed.add_field(name="Active Events", value="No active one-time events", inline=False)
-        
-        # Show interval logic
-        embed.add_field(
-            name="Dynamic Interval Logic",
-            value="""
-**🟢 Normal Phase** (>30 min remaining)
-• Use original interval from config
-
-**🟠 Urgent Phase** (≤30 min remaining)  
-• Every 10 minutes
-
-**🔴 Final Countdown** (≤10 min remaining)
-• ≤1 min: Every 1 minute
-• ≤3 min: Every 1 minute  
-• ≤5 min: Every 2 minutes
-• ≤10 min: Every 5 minutes
-            """.strip(),
-            inline=False
-        )
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @app_commands.command(name="test_dynamic_event", description="Create a test event with dynamic intervals")
-    async def test_dynamic_event(self, interaction: discord.Interaction, template_name: str, duration_minutes: int = 15):
-        """Create a test event to see dynamic intervals in action"""
-        
-        if template_name not in self.templates:
-            available = ", ".join(list(self.templates.keys())[:5])
-            await interaction.response.send_message(f"❌ Template '{template_name}' not found. Available: {available}...", ephemeral=True)
-            return
-        
-        if duration_minutes < 5 or duration_minutes > 120:
-            await interaction.response.send_message("❌ Duration must be between 5 and 120 minutes.", ephemeral=True)
-            return
-        
-        now = datetime.now(SERVER_TIMEZONE)
-        start_time = now
-        end_time = now + timedelta(minutes=duration_minutes)
-        
-        test_event = {
-            "type": "one_time",
-            "channel_id": interaction.channel.id,
-            "start": start_time.isoformat(),
-            "end": end_time.isoformat(),
-            "template": template_name,
-            "interval": 20,  # Base interval: 20 minutes
-            "last_sent": None,
-            "next_send": start_time.isoformat()
-        }
-        
-        self.events.append(test_event)
-        self.save_events()
-        
-        embed = discord.Embed(
-            title="🧪 Test Dynamic Event Created",
-            description=f"Created test event with dynamic intervals",
-            color=0x57F287
-        )
-        embed.add_field(name="Template", value=template_name, inline=True)
-        embed.add_field(name="Duration", value=f"{duration_minutes} minutes", inline=True)
-        embed.add_field(name="Base Interval", value="20 minutes", inline=True)
-        embed.add_field(name="End Time", value=end_time.strftime("%H:%M:%S"), inline=True)
-        
-        embed.add_field(
-            name="Expected Behavior",
-            value=f"• **First {max(0, duration_minutes-30)} min:** Every 20 min (base)\n"
-                  f"• **Last 30-10 min:** Every 10 min (urgent)\n"
-                  f"• **Last 10 min:** Every 5,2,1 min (final)",
-            inline=False
-        )
-        
-        embed.set_footer(text="Use /debug_dynamic_intervals to monitor progress")
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+            return base_interval
 
     @tasks.loop(minutes=5)
     async def check_recurring_schedules(self):
-        """Check recurring schedules"""
+        """Sprawdza recurring schedules dla wszystkich serwerów"""
         now = datetime.now(self.timezone)
         
-        for schedule in self.recurring_schedules.get("schedules", []):
+        for guild in self.bot.guilds:
+            if not self.bot.config_manager.is_module_enabled(guild.id, "schedule"):
+                continue
+            
+            try:
+                await self._check_recurring_for_guild(guild, now)
+            except Exception as e:
+                logger.error(f"Error checking recurring for guild {guild.id}: {e}")
+
+    async def _check_recurring_for_guild(self, guild: discord.Guild, now: datetime):
+        """Sprawdza recurring schedules dla serwera"""
+        guild_id = guild.id
+        recurring_data = self.load_recurring_schedules(guild_id)
+        modified = False
+        
+        for schedule in recurring_data.get("schedules", []):
             try:
                 if not self.should_send_recurring_message(schedule, now):
                     continue
@@ -473,66 +1954,43 @@ class Schedule(commands.Cog):
                 
                 channel_id = schedule.get("channel_id")
                 if not channel_id:
-                    log.warning(f"[RECURRING] No channel_id set for schedule: {schedule.get('name')}")
                     continue
                     
-                channel = self.bot.get_channel(channel_id)
+                channel = guild.get_channel(channel_id)
                 if not channel:
-                    log.warning(f"[RECURRING] Channel {channel_id} not found for schedule: {schedule.get('name')}")
                     continue
                 
-                log.info(f"[RECURRING] Attempting to send message for '{schedule.get('name')}' to #{channel.name}")
-                
-                template = self.create_template_from_schedule(schedule)
+                template = self.create_template_from_schedule(schedule, guild_id)
                 
                 if template:
-                    await self.send_template(channel, template, now + timedelta(days=1), is_recurring=True, start_time=now)
+                    await self.send_template(
+                        channel, template, 
+                        now + timedelta(days=1), 
+                        is_recurring=True, 
+                        start_time=now
+                    )
                     schedule["last_sent"] = now.isoformat()
-                    self.save_recurring_schedules()
-                else:
-                    log.warning(f"[RECURRING] Failed to create template for schedule: {schedule.get('name')}")
+                    modified = True
+                    logger.info(
+                        f"[RECURRING] Sent '{schedule.get('name')}' to {guild.name}"
+                    )
                 
             except Exception as e:
-                log.error(f"[RECURRING] Error processing schedule '{schedule.get('name', 'unknown')}': {e}", exc_info=True)
+                logger.error(
+                    f"Error processing recurring schedule for guild {guild_id}: {e}"
+                )
+        
+        if modified:
+            self.save_recurring_schedules(guild_id, recurring_data)
 
-    def create_template_from_schedule(self, schedule):
-        """Create a template object from schedule configuration"""
-        try:
-            template_name = schedule.get("template")
-            if template_name and template_name in self.templates:
-                return self.templates[template_name]
-            
-            if schedule.get("message"):
-                message_data = schedule["message"]
-                if isinstance(message_data, dict):
-                    template = {"type": "embed", "embed": message_data}
-                    if schedule.get("content"):
-                        template["type"] = "embed_with_content"
-                        template["content"] = schedule["content"]
-                    return template
-                elif isinstance(message_data, str):
-                    return {"type": "message", "content": message_data}
-            
-            if schedule.get("content"):
-                return {"type": "message", "content": schedule["content"]}
-            
-            log.warning(f"[RECURRING] No valid template found for schedule: {schedule.get('name')}")
-            return None
-        except Exception as e:
-            log.error(f"[RECURRING] Error creating template from schedule: {e}")
-            return None
-
-    # Zamień metodę should_send_recurring_message w swojej klasie Schedule na tę:
-
-    def should_send_recurring_message(self, schedule, current_time) -> bool:
+    def should_send_recurring_message(self, schedule: dict, current_time: datetime) -> bool:
+        """Sprawdza czy wysłać recurring message"""
         if not schedule.get("enabled", True):
             return False
         
-        # Check if this is a multi-day schedule
         if schedule.get("is_multiday", False):
             return self.should_send_multiday_schedule(schedule, current_time)
         
-        # Original single-day logic
         current_weekday = current_time.weekday()
         current_time_only = current_time.time()
         
@@ -541,10 +1999,13 @@ class Schedule(commands.Cog):
             return False
         
         try:
-            start_time = datetime.strptime(schedule.get("start_time", "00:00"), "%H:%M").time()
-            end_time = datetime.strptime(schedule.get("end_time", "23:59"), "%H:%M").time()
-        except ValueError as e:
-            log.error(f"[RECURRING] Error parsing time format: {e}")
+            start_time = datetime.strptime(
+                schedule.get("start_time", "00:00"), "%H:%M"
+            ).time()
+            end_time = datetime.strptime(
+                schedule.get("end_time", "23:59"), "%H:%M"
+            ).time()
+        except ValueError:
             return False
         
         if not (start_time <= current_time_only <= end_time):
@@ -562,217 +2023,86 @@ class Schedule(commands.Cog):
             
         return False
 
-    def should_send_multiday_schedule(self, schedule, current_time) -> bool:
-        """Handle multi-day schedules like Friday 14:00 to Saturday 20:00"""
+    def should_send_multiday_schedule(self, schedule: dict, current_time: datetime) -> bool:
+        """Obsługa multi-day schedules"""
         current_weekday = current_time.weekday()
         current_time_only = current_time.time()
         
-        # Get multiday configuration
         multiday_config = schedule.get("multiday_config", {})
-        start_day = multiday_config.get("start_day", 4)  # Default Friday
+        start_day = multiday_config.get("start_day", 4)
         start_time_str = multiday_config.get("start_time", "14:00")
-        end_day = multiday_config.get("end_day", 5)  # Default Saturday  
+        end_day = multiday_config.get("end_day", 5)
         end_time_str = multiday_config.get("end_time", "20:00")
         
         try:
             start_time = datetime.strptime(start_time_str, "%H:%M").time()
             end_time = datetime.strptime(end_time_str, "%H:%M").time()
-        except ValueError as e:
-            log.error(f"[RECURRING] Error parsing multiday time format: {e}")
+        except ValueError:
             return False
         
-        # Case 1: Same day schedule (e.g., Friday 14:00 to Friday 20:00)
         if start_day == end_day:
             if current_weekday == start_day:
                 if start_time <= current_time_only <= end_time:
-                    log.info(f"[RECURRING] Same-day multiday schedule active: {current_weekday} {current_time_only.strftime('%H:%M')}")
                     return True
-        
-        # Case 2: Multi-day schedule (e.g., Friday 14:00 to Saturday 20:00)
         else:
-            # Start day after start time
             if current_weekday == start_day and current_time_only >= start_time:
-                log.info(f"[RECURRING] Multiday schedule active: Start day {current_weekday} {current_time_only.strftime('%H:%M')} >= {start_time_str}")
                 return True
-            
-            # End day before end time
             elif current_weekday == end_day and current_time_only <= end_time:
-                log.info(f"[RECURRING] Multiday schedule active: End day {current_weekday} {current_time_only.strftime('%H:%M')} <= {end_time_str}")
                 return True
-            
-            # Days between start and end (if any)
             elif start_day < end_day:
                 if start_day < current_weekday < end_day:
-                    log.info(f"[RECURRING] Multiday schedule active: Between days {current_weekday}")
                     return True
-            
-            # Handle week wraparound (e.g., Saturday to Monday)
             elif start_day > end_day:
                 if current_weekday >= start_day or current_weekday <= end_day:
-                    # Check start day condition
                     if current_weekday == start_day and current_time_only >= start_time:
                         return True
-                    # Check end day condition  
                     elif current_weekday == end_day and current_time_only <= end_time:
                         return True
-                    # Check days in between
                     elif current_weekday > start_day or current_weekday < end_day:
                         return True
         
-        log.info(f"[RECURRING] Multiday schedule NOT active: {current_weekday=} {current_time_only.strftime('%H:%M')}")
         return False
-        
-    @app_commands.command(name="schedule", description="Create a new scheduled event using templates")
-    async def schedule(self, interaction: discord.Interaction):
-        """Create a scheduled event using available templates"""
-        
-        if not self.templates:
-            embed = discord.Embed(
-                title="❌ No Templates Available",
-                description="No message templates are configured. Please contact an administrator to set up templates.",
-                color=0xED4245
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-        
-        view = TemplateSelectView(self, self.templates)
-        embed = discord.Embed(
-            title="📅 Create Scheduled Event",
-            description="Choose a template to schedule:",
-            color=0x5865F2
-        )
-        embed.add_field(
-            name="How it works:",
-            value="1️⃣ Select a template from the dropdown\n2️⃣ Fill in the schedule details\n3️⃣ The bot will send messages at your specified interval",
-            inline=False
-        )
-        embed.set_footer(text="The event will use server timezone (UTC-2)")
-        
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-    @app_commands.command(name="debug_multiday", description="Debug multiday schedule logic")
-    async def debug_multiday(self, interaction: discord.Interaction, schedule_name: str = "shield"):
-        """Debug multiday schedule specifically"""
-        now = datetime.now(self.timezone)
-        
-        days_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        current_day_name = days_names[now.weekday()]
-        
-        embed = discord.Embed(title="📅 Multiday Schedule Debug", color=0x9B59B6)
-        embed.add_field(name="Current Time", value=now.strftime("%Y-%m-%d %H:%M:%S %Z"), inline=False)
-        embed.add_field(name="Current Day", value=f"{current_day_name} (weekday {now.weekday()})", inline=True)
-        embed.add_field(name="Current Time", value=now.time().strftime("%H:%M"), inline=True)
-        
-        # Find schedule
-        schedule = None
-        for s in self.recurring_schedules.get("schedules", []):
-            if s.get("name", "").lower() == schedule_name.lower():
-                schedule = s
-                break
-        
-        if not schedule:
-            embed.add_field(name="Error", value=f"Schedule '{schedule_name}' not found", inline=False)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-        
-        is_multiday = schedule.get("is_multiday", False)
-        embed.add_field(name="Is Multiday", value="✅ Yes" if is_multiday else "❌ No", inline=True)
-        
-        if is_multiday:
-            multiday_config = schedule.get("multiday_config", {})
-            start_day = multiday_config.get("start_day", 4)
-            start_time_str = multiday_config.get("start_time", "14:00")
-            end_day = multiday_config.get("end_day", 5)
-            end_time_str = multiday_config.get("end_time", "20:00")
+    def create_template_from_schedule(self, schedule: dict, guild_id: int) -> Optional[dict]:
+        """Tworzy template z schedule"""
+        try:
+            template_name = schedule.get("template")
+            if template_name:
+                templates = self.load_templates(guild_id)
+                if template_name in templates:
+                    return templates[template_name]
             
-            start_day_name = days_names[start_day]
-            end_day_name = days_names[end_day]
+            if schedule.get("message"):
+                message_data = schedule["message"]
+                if isinstance(message_data, dict):
+                    template = {"type": "embed", "embed": message_data}
+                    if schedule.get("content"):
+                        template["type"] = "embed_with_content"
+                        template["content"] = schedule["content"]
+                    return template
+                elif isinstance(message_data, str):
+                    return {"type": "message", "content": message_data}
             
-            should_send = self.should_send_multiday_schedule(schedule, now)
+            if schedule.get("content"):
+                return {"type": "message", "content": schedule["content"]}
             
-            embed.add_field(
-                name="Multiday Configuration",
-                value=f"**Range:** {start_day_name} {start_time_str} → {end_day_name} {end_time_str}\n"
-                      f"**Start:** {start_day_name} ({start_day}) at {start_time_str}\n" 
-                      f"**End:** {end_day_name} ({end_day}) at {end_time_str}",
-                inline=False
+            logger.warning(
+                f"[RECURRING] No valid template found for schedule: {schedule.get('name')}"
             )
-            
-            # Check conditions
-            try:
-                start_time = datetime.strptime(start_time_str, "%H:%M").time()
-                end_time = datetime.strptime(end_time_str, "%H:%M").time()
-                
-                is_start_day_time = now.weekday() == start_day and now.time() >= start_time
-                is_end_day_time = now.weekday() == end_day and now.time() <= end_time
-                is_between_days = start_day < now.weekday() < end_day if start_day < end_day else False
-                
-                embed.add_field(
-                    name="Condition Check",
-                    value=f"**Start condition:** {start_day_name} {start_time_str}+\n"
-                          f"Current is {start_day_name}: {'✅' if now.weekday() == start_day else '❌'}\n"
-                          f"Time >= {start_time_str}: {'✅' if is_start_day_time else '❌'}\n\n"
-                          f"**End condition:** {end_day_name} until {end_time_str}\n" 
-                          f"Current is {end_day_name}: {'✅' if now.weekday() == end_day else '❌'}\n"
-                          f"Time <= {end_time_str}: {'✅' if is_end_day_time else '❌'}\n\n"
-                          f"**Between days:** {'✅' if is_between_days else '❌'}\n\n"
-                          f"**RESULT: {'✅ SHOULD SEND' if should_send else '❌ SHOULD NOT SEND'}**",
-                    inline=False
-                )
-            except ValueError as e:
-                embed.add_field(name="Error", value=f"Time parsing error: {e}", inline=False)
-        else:
-            # Show regular schedule logic
-            should_send = self.should_send_recurring_message(schedule, now)
-            days = schedule.get("days", [])
-            days_str = ", ".join([days_names[d] for d in days])
-            
-            embed.add_field(
-                name="Regular Schedule",
-                value=f"**Days:** {days} ({days_str})\n"
-                      f"**Time:** {schedule.get('start_time')} - {schedule.get('end_time')}\n"
-                      f"**RESULT: {'✅ SHOULD SEND' if should_send else '❌ SHOULD NOT SEND'}**",
-                inline=False
-            )
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+            return None
+        except Exception as e:
+            logger.error(f"[RECURRING] Error creating template from schedule: {e}")
+            return None
 
-    @app_commands.command(name="convert_to_multiday", description="Convert shield schedule to multiday format")
-    async def convert_to_multiday(self, interaction: discord.Interaction):
-        """Convert shield schedule to use multiday configuration"""
-        
-        for schedule in self.recurring_schedules.get("schedules", []):
-            if schedule.get("name") == "shield":
-                # Add multiday configuration
-                schedule["is_multiday"] = True
-                schedule["multiday_config"] = {
-                    "start_day": 4,      # Friday
-                    "start_time": "14:00",
-                    "end_day": 5,        # Saturday  
-                    "end_time": "20:00"
-                }
-                
-                # Keep old config for reference but it won't be used
-                # schedule["days"] = [4, 5]  # Keep as is
-                # schedule["start_time"] = "14:00"  # Keep as is  
-                # schedule["end_time"] = "20:00"    # Keep as is
-                
-                self.save_recurring_schedules()
-                
-                await interaction.response.send_message(
-                    f"✅ Shield schedule converted to multiday!\n\n"
-                    f"**New configuration:**\n"
-                    f"• Type: Multiday schedule ✅\n"
-                    f"• Range: Friday 14:00 → Saturday 20:00\n"
-                    f"• Will be active from Friday 14:00 until Saturday 20:00\n\n"
-                    f"Use `/debug_multiday shield` to test the logic!",
-                    ephemeral=True
-                )
-                return
-        
-        await interaction.response.send_message("❌ Shield schedule not found.", ephemeral=True)
-
-    async def send_template(self, channel, template, end_time, is_recurring=False, start_time=None):
+    async def send_template(
+        self, 
+        channel: discord.TextChannel, 
+        template: dict, 
+        end_time: datetime, 
+        is_recurring: bool = False, 
+        start_time: Optional[datetime] = None
+    ):
+        """Wysyła template do kanału - UPDATED VERSION"""
         try:
             now = datetime.now(self.timezone)
             event_time = start_time or now
@@ -781,7 +2111,11 @@ class Schedule(commands.Cog):
             days, rem = divmod(remaining.total_seconds(), 86400)
             hours, rem = divmod(rem, 3600)
             minutes, _ = divmod(rem, 60)
-            countdown = f"{int(days)}d, {int(hours)}h, {int(minutes)}m" if remaining.total_seconds() > 0 else "Event ended"
+            countdown = (
+                f"{int(days)}d, {int(hours)}h, {int(minutes)}m" 
+                if remaining.total_seconds() > 0 
+                else "Event ended"
+            )
 
             def replace(text):
                 if not text or not isinstance(text, str): 
@@ -799,19 +2133,33 @@ class Schedule(commands.Cog):
             
             if "embed" in template:
                 embed_data = template["embed"]
-                color = int(str(embed_data.get("color", "0x00ff00")).replace("#", ""), 16)
+                color = int(
+                    str(embed_data.get("color", "0x00ff00")).replace("#", ""), 16
+                )
                 
                 embed = discord.Embed(
                     title=replace(embed_data.get("title")),
                     description=replace(embed_data.get("description")),
                     color=color
                 )
+                
+                # Author (NEW)
+                if embed_data.get("author"):
+                    author_data = embed_data["author"]
+                    embed.set_author(
+                        name=replace(author_data.get("name", "")),
+                        icon_url=author_data.get("icon_url")
+                    )
+                
+                # Fields
                 for field in embed_data.get("fields", []):
                     embed.add_field(
                         name=replace(field.get("name")), 
                         value=replace(field.get("value")), 
                         inline=field.get("inline", False)
                     )
+                
+                # Footer (UPDATED)
                 if embed_data.get("footer"):
                     footer_data = embed_data.get("footer")
                     if isinstance(footer_data, dict):
@@ -821,529 +2169,46 @@ class Schedule(commands.Cog):
                         )
                     else:
                         embed.set_footer(text=replace(footer_data))
+                
+                # Thumbnail (NEW)
                 if embed_data.get("thumbnail"):
-                    embed.set_thumbnail(url=embed_data["thumbnail"])
+                    try:
+                        embed.set_thumbnail(url=embed_data["thumbnail"])
+                    except:
+                        pass
+                
+                # Main Image (NEW)
                 if embed_data.get("image"):
-                    embed.set_image(url=embed_data["image"])
+                    try:
+                        embed.set_image(url=embed_data["image"])
+                    except:
+                        pass
 
             await channel.send(content=content, embed=embed)
+            
         except Exception as e:
-            log.error(f"Error sending template '{template.get('type')}': {e}", exc_info=True)
-            
-    # Dodaj te komendy debugowania do swojej klasy Schedule
-
-    @app_commands.command(name="debug_today", description="Check what day it is and time")
-    async def debug_today(self, interaction: discord.Interaction):
-        """Quick debug for current day/time"""
-        now = datetime.now(self.timezone)
-        
-        days_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        current_day_name = days_names[now.weekday()]
-        
-        embed = discord.Embed(title="📅 Current Day/Time Debug", color=0x3498DB)
-        embed.add_field(name="Current Time", value=now.strftime("%Y-%m-%d %H:%M:%S %Z"), inline=False)
-        embed.add_field(name="Weekday Number", value=f"{now.weekday()} ({current_day_name})", inline=True)
-        embed.add_field(name="Time Only", value=now.time().strftime("%H:%M"), inline=True)
-        
-        # Check your specific schedule
-        for schedule in self.recurring_schedules.get("schedules", []):
-            if schedule.get("name") == "shield":
-                days = schedule.get("days", [])
-                start_time = schedule.get("start_time", "00:00")
-                end_time = schedule.get("end_time", "23:59")
-                
-                weekday_match = now.weekday() in days
-                
-                try:
-                    start_time_obj = datetime.strptime(start_time, "%H:%M").time()
-                    end_time_obj = datetime.strptime(end_time, "%H:%M").time()
-                    time_match = start_time_obj <= now.time() <= end_time_obj
-                except ValueError:
-                    time_match = False
-                
-                embed.add_field(
-                    name="Shield Schedule Check",
-                    value=f"Days: {days} (Friday=4, Saturday=5)\n"
-                          f"Today matches: {'✅' if weekday_match else '❌'}\n"
-                          f"Time range: {start_time}-{end_time}\n"
-                          f"Time matches: {'✅' if time_match else '❌'}",
-                    inline=False
-                )
-                break
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @app_commands.command(name="debug_recurring", description="Debug recurring schedule status")
-    async def debug_recurring(self, interaction: discord.Interaction):
-        """Debug command to check recurring schedule status"""
-        now = datetime.now(self.timezone)
-        
-        embed = discord.Embed(title="🐛 Recurring Schedules Debug", color=0xFF9900)
-        embed.add_field(name="Current Time", value=now.strftime("%Y-%m-%d %H:%M:%S %Z"), inline=False)
-        embed.add_field(name="Current Weekday", value=f"{now.weekday()} (0=Monday, 6=Sunday)", inline=True)
-        embed.add_field(name="Current Time Only", value=now.time().strftime("%H:%M"), inline=True)
-        
-        schedules = self.recurring_schedules.get("schedules", [])
-        embed.add_field(name="Total Schedules", value=str(len(schedules)), inline=True)
-        
-        if not schedules:
-            embed.description = "❌ No recurring schedules found!"
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-        
-        for i, schedule in enumerate(schedules, 1):
-            name = schedule.get("name", "Unnamed")
-            enabled = schedule.get("enabled", True)
-            channel_id = schedule.get("channel_id")
-            template = schedule.get("template")
-            days = schedule.get("days", [])
-            start_time = schedule.get("start_time", "00:00")
-            end_time = schedule.get("end_time", "23:59")
-            interval_hours = schedule.get("interval_hours", 2)
-            last_sent = schedule.get("last_sent")
-            
-            # Check if should send
-            should_send = self.should_send_recurring_message(schedule, now)
-            
-            # Check individual conditions
-            weekday_ok = now.weekday() in days
-            
-            try:
-                start_time_obj = datetime.strptime(start_time, "%H:%M").time()
-                end_time_obj = datetime.strptime(end_time, "%H:%M").time()
-                time_ok = start_time_obj <= now.time() <= end_time_obj
-            except ValueError:
-                time_ok = False
-            
-            # Check interval
-            interval_ok = True
-            if last_sent:
-                try:
-                    last_sent_dt = datetime.fromisoformat(last_sent)
-                    minutes_since = (now - last_sent_dt).total_seconds() / 60
-                    interval_minutes = interval_hours * 60
-                    interval_ok = minutes_since >= interval_minutes
-                except:
-                    interval_ok = True
-            
-            status_text = f"""
-    **{i}. {name}**
-    • Enabled: {'✅' if enabled else '❌'} {enabled}
-    • Channel: <#{channel_id}> (exists: {'✅' if self.bot.get_channel(channel_id) else '❌'})
-    • Template: {template} (exists: {'✅' if template in self.templates else '❌'})
-    • Days: {days} (today ok: {'✅' if weekday_ok else '❌'})
-    • Time: {start_time}-{end_time} (now ok: {'✅' if time_ok else '❌'})
-    • Interval: {interval_hours}h (ok: {'✅' if interval_ok else '❌'})
-    • Last sent: {last_sent or 'Never'}
-    • **Should send: {'✅ YES' if should_send else '❌ NO'}**
-            """
-            
-            embed.add_field(name=f"Schedule {i}", value=status_text.strip(), inline=False)
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @app_commands.command(name="force_recurring", description="Force send a recurring message now")
-    async def force_recurring(self, interaction: discord.Interaction, schedule_name: str):
-        """Force send a recurring message for testing"""
-        
-        schedule = None
-        for s in self.recurring_schedules.get("schedules", []):
-            if s.get("name", "").lower() == schedule_name.lower():
-                schedule = s
-                break
-        
-        if not schedule:
-            await interaction.response.send_message(f"❌ Schedule '{schedule_name}' not found.", ephemeral=True)
-            return
-        
-        channel_id = schedule.get("channel_id")
-        if not channel_id:
-            await interaction.response.send_message("❌ No channel_id set for this schedule.", ephemeral=True)
-            return
-        
-        channel = self.bot.get_channel(channel_id)
-        if not channel:
-            await interaction.response.send_message(f"❌ Channel {channel_id} not found.", ephemeral=True)
-            return
-        
-        template = self.create_template_from_schedule(schedule)
-        if not template:
-            await interaction.response.send_message("❌ Failed to create template from schedule.", ephemeral=True)
-            return
-        
-        try:
-            now = datetime.now(self.timezone)
-            await self.send_template(channel, template, now + timedelta(days=1), is_recurring=True, start_time=now)
-            
-            # Update last_sent
-            schedule["last_sent"] = now.isoformat()
-            self.save_recurring_schedules()
-            
-            await interaction.response.send_message(
-                f"✅ Forced recurring message '{schedule_name}' sent to {channel.mention}!", 
-                ephemeral=True
+            logger.error(
+                f"Error sending template '{template.get('type')}' to "
+                f"#{channel.name}: {e}", 
+                exc_info=True
             )
-        except Exception as e:
-            await interaction.response.send_message(f"❌ Error sending message: {e}", ephemeral=True)
-            log.error(f"Error in force_recurring: {e}", exc_info=True)
-
-    @app_commands.command(name="recurring_reset_timer", description="Reset the timer for a recurring schedule")
-    async def recurring_reset_timer(self, interaction: discord.Interaction, schedule_name: str = "shield"):
-        """Reset last_sent time for a recurring schedule"""
-        
-        for schedule in self.recurring_schedules.get("schedules", []):
-            if schedule.get("name", "").lower() == schedule_name.lower():
-                old_last_sent = schedule.get("last_sent", "Never")
-                schedule["last_sent"] = None
-                schedule.pop("last_week_sent", None)  # Also reset week tracking
-                self.save_recurring_schedules()
-                
-                await interaction.response.send_message(
-                    f"✅ Timer reset for '{schedule_name}'.\n"
-                    f"Previous last_sent: {old_last_sent}\n"
-                    f"It can now send immediately when conditions are met.", 
-                    ephemeral=True
-                )
-                return
-        
-        await interaction.response.send_message(f"❌ Recurring schedule '{schedule_name}' not found.", ephemeral=True)
-
-    @app_commands.command(name="fix_shield_schedule", description="Quick fix for shield schedule")
-    async def fix_shield_schedule(self, interaction: discord.Interaction):
-        """Quick command to fix the shield schedule issues"""
-        
-        for schedule in self.recurring_schedules.get("schedules", []):
-            if schedule.get("name") == "shield":
-                # Reset timer
-                schedule["last_sent"] = None
-                
-                # Fix image URL if it's broken
-                if "message" in schedule and "image" in schedule["message"]:
-                    old_url = schedule["message"]["image"]
-                    if not old_url.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
-                        # Add .png extension
-                        schedule["message"]["image"] = old_url + ".png"
-                        
-                self.save_recurring_schedules()
-                
-                # Show current status
-                now = datetime.now(self.timezone)
-                days_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-                current_day = days_names[now.weekday()]
-                
-                weekday_match = now.weekday() in schedule.get("days", [])
-                time_match = False
-                
-                try:
-                    start_time_obj = datetime.strptime(schedule.get("start_time", "14:00"), "%H:%M").time()
-                    end_time_obj = datetime.strptime(schedule.get("end_time", "20:00"), "%H:%M").time()
-                    time_match = start_time_obj <= now.time() <= end_time_obj
-                except ValueError:
-                    pass
-                
-                await interaction.response.send_message(
-                    f"✅ Shield schedule fixed!\n\n"
-                    f"**Current status:**\n"
-                    f"• Today: {current_day} (weekday {now.weekday()})\n"
-                    f"• Time: {now.time().strftime('%H:%M')}\n"
-                    f"• Day matches: {'✅' if weekday_match else '❌'} (needs Friday=4 or Saturday=5)\n"
-                    f"• Time matches: {'✅' if time_match else '❌'} (needs 14:00-20:00)\n"
-                    f"• Timer reset: ✅\n"
-                    f"• Image URL fixed: ✅\n\n"
-                    f"**Should send now: {'✅ YES' if (weekday_match and time_match) else '❌ NO'}**",
-                    ephemeral=True
-                )
-                return
-        
-        await interaction.response.send_message("❌ Shield schedule not found.", ephemeral=True)
-
-    @app_commands.command(name="schedule_list", description="Display all active events")
-    async def schedule_list(self, interaction: discord.Interaction):
-        embed = discord.Embed(title="Active Schedules", color=0x5865F2)
-        now = datetime.now(SERVER_TIMEZONE)
-        
-        one_time_events_str = []
-        for i, event in enumerate(self.events, 1):
-            if event.get("type", "one_time") == "one_time":
-                start = datetime.fromisoformat(event["start"])
-                end = datetime.fromisoformat(event["end"])
-                status = "🟢 Active" if now <= end else "🔴 Expired"
-                one_time_events_str.append(f"**{i}. {event['template']}** {status}\n> Ends: {end.strftime('%Y-%m-%d %H:%M')}")
-        
-        embed.add_field(name="📅 One-Time Events", value="\n".join(one_time_events_str) or "None", inline=False)
-        
-        recurring_schedules_str = []
-        for schedule in self.recurring_schedules.get("schedules", []):
-            status = "✅ Enabled" if schedule.get("enabled", True) else "❌ Disabled"
-            recurring_schedules_str.append(f"**{schedule.get('name')}** {status}\n> Days: {schedule.get('days')}, Time: {schedule.get('start_time')}-{schedule.get('end_time')}")
-            
-        embed.add_field(name="🔄 Recurring Schedules", value="\n".join(recurring_schedules_str) or "None", inline=False)
-        embed.set_footer(text=f"Server time (UTC-2): {now.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-        
-    @app_commands.command(name="schedule_clear", description="Clear all one-time scheduled events")
-    async def schedule_clear(self, interaction: discord.Interaction):
-        count = len(self.events)
-        self.events.clear()
-        self.save_events()
-        await interaction.response.send_message(f"✅ Cleared {count} one-time scheduled events.", ephemeral=True)
-    
-    # ... Inne komendy (schedule_templates, schedule_remove, etc.) bez zmian ...
-    
-    @app_commands.command(name="schedule_remove", description="Remove a specific scheduled event")
-    async def schedule_remove(self, interaction: discord.Interaction, event_id: int):
-        """Remove a specific event by ID (1-based index from schedule_list)"""
-        one_time_events = [e for e in self.events if e.get("type", "one_time") == "one_time"]
-        
-        if event_id < 1 or event_id > len(one_time_events):
-            await interaction.response.send_message(f"❌ Invalid event ID. Use `/schedule_list` to see available events (1-{len(one_time_events)}).", ephemeral=True)
-            return
-        
-        event_to_remove = one_time_events[event_id - 1]
-        self.events.remove(event_to_remove)
-        self.save_events()
-        
-        embed = discord.Embed(
-            title="✅ Event Removed",
-            description=f"Successfully removed event: **{event_to_remove['template']}**",
-            color=0x57F287
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @app_commands.command(name="schedule_cleanup", description="Remove all expired events")
-    async def schedule_cleanup(self, interaction: discord.Interaction):
-        """Remove all expired events"""
-        now_server = datetime.now(SERVER_TIMEZONE)
-        expired_events = []
-        
-        for event in self.events[:]:  # Create a copy to iterate over
-            if event.get("type", "one_time") != "one_time":
-                continue
-                
-            try:
-                end_str = event["end"]
-                if end_str.endswith('Z') or '+' in end_str:
-                    end_time = datetime.fromisoformat(end_str.replace('Z', '+00:00')).astimezone(SERVER_TIMEZONE)
-                else:
-                    end_time = datetime.fromisoformat(end_str)
-                    if end_time.tzinfo is None:
-                        end_time = end_time.replace(tzinfo=SERVER_TIMEZONE)
-                
-                if now_server > end_time:
-                    expired_events.append(event)
-                    self.events.remove(event)
-            except Exception:
-                # If we can't parse the event, consider it corrupted and remove it
-                expired_events.append(event)
-                self.events.remove(event)
-        
-        if expired_events:
-            self.save_events()
-            embed = discord.Embed(
-                title="✅ Cleanup Complete",
-                description=f"Removed {len(expired_events)} expired events.",
-                color=0x57F287
-            )
-        else:
-            embed = discord.Embed(
-                title="ℹ️ No Cleanup Needed",
-                description="No expired events found.",
-                color=0x5865F2
-            )
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    # Commands for recurring schedules
-    @app_commands.command(name="recurring_list", description="List all recurring schedules")
-    async def recurring_list(self, interaction: discord.Interaction):
-        embed = discord.Embed(title="📋 Recurring Schedules", color=0x00ff00)
-        
-        schedules = self.recurring_schedules.get("schedules", [])
-        if not schedules:
-            embed.description = "No recurring schedules configured."
-        else:
-            for i, schedule in enumerate(schedules, 1):
-                days_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-                days_str = ", ".join([days_names[day] for day in schedule.get("days", [])])
-                
-                status = "✅ Enabled" if schedule.get("enabled", True) else "❌ Disabled"
-                week_interval = schedule.get("week_interval", 1)
-                week_text = f"Every {week_interval} weeks" if week_interval > 1 else "Every week"
-                
-                embed.add_field(
-                    name=f"{i}. {schedule.get('name', 'Unnamed')}",
-                    value=(
-                        f"**Status:** {status}\n"
-                        f"**Days:** {days_str}\n"
-                        f"**Time:** {schedule.get('start_time')} - {schedule.get('end_time')}\n"
-                        f"**Frequency:** {week_text}\n"
-                        f"**Interval:** Every {schedule.get('interval_hours', 2)} hours\n"
-                        f"**Template:** {schedule.get('template', 'Not set')}\n"
-                        f"**Channel:** <#{schedule.get('channel_id', 'Not set')}>"
-                    ),
-                    inline=False
-                )
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @app_commands.command(name="recurring_enable", description="Enable a recurring schedule")
-    async def recurring_enable(self, interaction: discord.Interaction, schedule_name: str):
-        for schedule in self.recurring_schedules.get("schedules", []):
-            if schedule.get("name", "").lower() == schedule_name.lower():
-                schedule["enabled"] = True
-                self.save_recurring_schedules()
-                await interaction.response.send_message(f"✅ Recurring schedule '{schedule_name}' enabled.", ephemeral=True)
-                return
-        
-        await interaction.response.send_message(f"❌ Recurring schedule '{schedule_name}' not found.", ephemeral=True)
-
-    @app_commands.command(name="recurring_disable", description="Disable a recurring schedule")
-    async def recurring_disable(self, interaction: discord.Interaction, schedule_name: str):
-        for schedule in self.recurring_schedules.get("schedules", []):
-            if schedule.get("name", "").lower() == schedule_name.lower():
-                schedule["enabled"] = False
-                self.save_recurring_schedules()
-                await interaction.response.send_message(f"❌ Recurring schedule '{schedule_name}' disabled.", ephemeral=True)
-                return
-        
-        await interaction.response.send_message(f"❌ Recurring schedule '{schedule_name}' not found.", ephemeral=True)
-
-    @app_commands.command(name="test_template_menu", description="Test a template using interactive menu")
-    async def test_template_menu(self, interaction: discord.Interaction):
-        """Test a template using dropdown menu"""
-        
-        if not self.templates:
-            await interaction.response.send_message("❌ No templates available.", ephemeral=True)
-            return
-        
-        view = TemplateTestView(self, self.templates)
-        embed = discord.Embed(
-            title="🧪 Test Template",
-            description="Choose a template to test in this channel:",
-            color=0x3498DB
-        )
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
-    @app_commands.command(name="debug_time", description="Show current time information")
-    async def debug_time(self, interaction: discord.Interaction):
-        """Debug command to check timezone and time information"""
-        now_server = datetime.now(SERVER_TIMEZONE)
-        now_utc = datetime.now(timezone.utc)
-        
-        embed = discord.Embed(title="🕐 Time Debug Information", color=0x5865F2)
-        embed.add_field(name="Server Time (UTC-2)", value=now_server.strftime("%Y-%m-%d %H:%M:%S %Z"), inline=True)
-        embed.add_field(name="UTC Time", value=now_utc.strftime("%Y-%m-%d %H:%M:%S %Z"), inline=True)
-        embed.add_field(name="Timezone Offset", value="UTC-2", inline=True)
-        
-        # Check if any events should be active right now
-        active_events = []
-        for event in self.events:
-            if event.get("type", "one_time") != "one_time":
-                continue
-            try:
-                start_str = event["start"]
-                end_str = event["end"]
-                
-                if start_str.endswith('Z') or '+' in start_str:
-                    start_time = datetime.fromisoformat(start_str.replace('Z', '+00:00')).astimezone(SERVER_TIMEZONE)
-                    end_time = datetime.fromisoformat(end_str.replace('Z', '+00:00')).astimezone(SERVER_TIMEZONE)
-                else:
-                    start_time = datetime.fromisoformat(start_str)
-                    end_time = datetime.fromisoformat(end_str)
-                    if start_time.tzinfo is None:
-                        start_time = start_time.replace(tzinfo=SERVER_TIMEZONE)
-                    if end_time.tzinfo is None:
-                        end_time = end_time.replace(tzinfo=SERVER_TIMEZONE)
-                
-                if start_time <= now_server <= end_time:
-                    next_send = event.get("next_send", "Not set")
-                    active_events.append(f"• {event['template']} (next: {next_send})")
-                    
-            except Exception as e:
-                active_events.append(f"• {event.get('template', 'Unknown')} (Error: {e})")
-        
-        embed.add_field(
-            name="Active Events Right Now",
-            value="\n".join(active_events) if active_events else "None",
-            inline=False
-        )
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @check_events.before_loop
     async def before_check_events(self):
         await self.bot.wait_until_ready()
-        print("Event checker started!")
+        logger.info("✅ Event checker started!")
 
     @check_recurring_schedules.before_loop
     async def before_check_recurring(self):
         await self.bot.wait_until_ready()
-        print("Recurring schedule checker started!")
+        logger.info("✅ Recurring schedule checker started!")
 
     def cog_unload(self):
+        """Cleanup when cog is unloaded"""
         self.check_events.cancel()
         self.check_recurring_schedules.cancel()
-        print("Schedule cog unloaded, tasks cancelled")
+        logger.info("Schedule cog unloaded, tasks cancelled")
 
-class TemplateTestView(discord.ui.View):
-    def __init__(self, schedule_cog, templates):
-        super().__init__(timeout=300)
-        self.schedule_cog = schedule_cog
-        self.templates = templates
-        
-        options = []
-        for template_name, template_data in self.templates.items():
-            template_type = template_data.get('type', 'unknown')
-            
-            # Create preview text
-            if template_type == "message":
-                preview = template_data.get('content', '')[:50] + "..." if len(template_data.get('content', '')) > 50 else template_data.get('content', '')
-            elif template_type == "embed":
-                preview = template_data.get('embed', {}).get('title', 'No title')[:50]
-            else:
-                preview = "Unknown format"
-            
-            if len(preview) > 100:
-                preview = preview[:97] + "..."
-            
-            options.append(discord.SelectOption(
-                label=template_name[:50],  # Discord limit
-                description=f"Type: {template_type} | {preview}",
-                value=template_name
-            ))
-        
-        # Discord allows max 25 options
-        if len(options) > 25:
-            options = options[:25]
-        
-        self.template_select.options = options
-
-    @discord.ui.select(placeholder="Choose a template to test...")
-    async def template_select(self, interaction: discord.Interaction, select: discord.ui.Select):
-        template_name = select.values[0]
-        template = self.templates[template_name]
-        
-        try:
-            # Test end_time (1 hour from now)
-            test_end_time = datetime.now(SERVER_TIMEZONE) + timedelta(hours=1)
-            test_start_time = datetime.now(SERVER_TIMEZONE)
-            
-            # Send confirmation
-            await interaction.response.send_message(
-                f"✅ Testing template `{template_name}` in this channel...", 
-                ephemeral=True
-            )
-            
-            # Send the template
-            await self.schedule_cog.send_template(interaction.channel, template, test_end_time, is_recurring=False, start_time=test_start_time)
-            
-        except Exception as e:
-            await interaction.followup.send(
-                f"❌ Error sending template: {str(e)}", 
-                ephemeral=True
-            )
-            print(f"Error testing template {template_name}: {e}")
-            print(traceback.format_exc())
 
 async def setup(bot):
     await bot.add_cog(Schedule(bot))
