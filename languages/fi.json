@@ -1,0 +1,21 @@
+{
+    "translator": {
+    "translation_title": "Käännös",
+    "setlang_title": "🌐 Valitse oletuskäännöskieli",
+    "setlang_description": "Valitse alla olevasta valikosta kieli, jolla haluat vastaanottaa käännökset.",
+    "setlang_tip": "💡 **Vinkki:** Tätä kieltä käytetään automaattisesti sovelluksen valikon kautta.",
+    "setlang_footer": "Valikko vanhenee 3 minuutissa",
+    "current_language": "Nykyinen kieli",
+    "success_title": "✅ Kieli asetettu onnistuneesti!",
+    "success_description": "Oletuskäännöskielesi on nyt:",
+    "code": "ISO-koodi",
+    "how_it_works": "🔄 Miten se toimii",
+    "how_it_works_desc": "Kun käytät viestissä **Translate Message** -toimintoa, botti kääntää sen automaattisesti tälle kielelle.",
+    "footer": "Voit muuttaa tämän milloin tahansa komennolla /setlang",
+    "languages_title": "🌐 Saatavilla olevat käännöskielet",
+    "languages_description": "Valitse käännöskieli...",
+    "languages_col1": "Kielet (A-L)",
+    "languages_col2": "Kielet (M-Z)",
+    "languages_footer": "Tallenna valintasi käyttämällä /setlang"
+    }
+}

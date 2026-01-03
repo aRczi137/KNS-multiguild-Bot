@@ -1,0 +1,21 @@
+{
+    "translator": {
+    "translation_title": "Fordítás",
+    "setlang_title": "🌐 Alapértelmezett fordítási nyelv kiválasztása",
+    "setlang_description": "Válaszd ki az alábbi menüből azt a nyelvet, amelyen a fordításokat szeretnéd kapni.",
+    "setlang_tip": "💡 **Tipp:** Ez a nyelv automatikusan lesz használva az alkalmazás környezeti menüjéből.",
+    "setlang_footer": "A menü 3 perc múlva lejár",
+    "current_language": "Jelenlegi nyelv",
+    "success_title": "✅ Nyelv sikeresen beállítva!",
+    "success_description": "Az alapértelmezett fordítási nyelved mostantól:",
+    "code": "ISO kód",
+    "how_it_works": "🔄 Hogyan működik",
+    "how_it_works_desc": "Ha a **Translate Message** funkciót használod egy üzeneten, a bot automatikurar lefordítja azt erre a nyelvre.",
+    "footer": "Ezt bármikor megváltoztathatod a /setlang paranccsal",
+    "languages_title": "🌐 Elérhető fordítási nyelvek",
+    "languages_description": "Válassz fordítási nyelvet...",
+    "languages_col1": "Nyelvek (A-L)",
+    "languages_col2": "Nyelvek (M-Z)",
+    "languages_footer": "A mentéshez használd a /setlang parancsot"
+    }
+}

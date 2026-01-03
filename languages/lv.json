@@ -1,0 +1,21 @@
+{
+    "translator": {
+    "translation_title": "Tulkojums",
+    "setlang_title": "🌐 Izvēlieties noklusējuma tulkošanas valodu",
+    "setlang_description": "Zemāk esošajā izvēlnē izvēlieties valodu, kurā vēlaties saņemt tulkojumus.",
+    "setlang_tip": "💡 **Padoms:** Šī valoda tiks izmantota automātiski, izmantojot lietotnes konteksta izvēlni.",
+    "setlang_footer": "Izvēlnes termiņš beigsies pēc 3 minūtēm",
+    "current_language": "Pašreizējā valoda",
+    "success_title": "✅ Valoda veiksmīgi iestatīta!",
+    "success_description": "Jūsu noklusējuma tulkošanas valoda tagad ir:",
+    "code": "ISO kods",
+    "how_it_works": "🔄 Kā tas darbojas",
+    "how_it_works_desc": "Kad ziņojumam izmantosiet **Translate Message**, bots to automātiski pārtulkos šajā valodā.",
+    "footer": "Jūs jebkurā laikā varat to mainīt, izmantojot /setlang",
+    "languages_title": "🌐 Pieejamās tulkošanas valodas",
+    "languages_description": "Izvēlieties tulkošanas valodu...",
+    "languages_col1": "Valodas (A-L)",
+    "languages_col2": "Valodas (M-Z)",
+    "languages_footer": "Izmantojiet /setlang, lai saglabātu izvēli"
+    }
+}

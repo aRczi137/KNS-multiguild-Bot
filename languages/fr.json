@@ -1,0 +1,21 @@
+{
+    "translator": {
+    "translation_title": "Traduction",
+    "setlang_title": "🌐 Sélectionner la langue de traduction",
+    "setlang_description": "Choisissez la langue dans laquelle vous souhaitez recevoir les traductions.",
+    "setlang_tip": "💡 **Astuce :** Cette langue sera utilisée automatiquement via le menu contextuel.",
+    "setlang_footer": "Le menu expire dans 3 minutes",
+    "current_language": "Langue actuelle",
+    "success_title": "✅ Langue configurée avec succès !",
+    "success_description": "Votre langue de traduction par défaut est maintenant :",
+    "code": "Code ISO",
+    "how_it_works": "🔄 Comment ça marche",
+    "how_it_works_desc": "Lorsque vous utilisez **Translate Message**, le bot traduira automatiquement dans cette langue.",
+    "footer": "Vous pouvez changer cela à tout moment avec /setlang",
+    "languages_title": "🌐 Langues de traduction disponibles",
+    "languages_description": "Sélectionnez une langue...",
+    "languages_col1": "Langues (A-L)",
+    "languages_col2": "Langues (M-Z)",
+    "languages_footer": "Utilisez /setlang pour enregistrer votre choix"
+    }
+}

@@ -1,0 +1,21 @@
+{
+    "translator": {
+    "translation_title": "Terjemahan",
+    "setlang_title": "🌐 Pilih Bahasa Terjemahan Default",
+    "setlang_description": "Pilih bahasa dari menu di bawah ini untuk menerima terjemahan.",
+    "setlang_tip": "💡 **Tip:** Bahasa ini akan digunakan secara otomatis saat menggunakan menu konteks aplikasi.",
+    "setlang_footer": "Menu akan berakhir dalam 3 menit",
+    "current_language": "Bahasa saat ini",
+    "success_title": "✅ Bahasa Berhasil Diatur!",
+    "success_description": "Bahasa terjemahan default Anda sekarang adalah:",
+    "code": "Kode ISO",
+    "how_it_works": "🔄 Cara kerja",
+    "how_it_works_desc": "Saat Anda menggunakan **Translate Message** pada pesan, bot akan secara otomatis menerjemahkannya ke bahasa ini.",
+    "footer": "Anda dapat mengubah ini kapan saja menggunakan /setlang",
+    "languages_title": "🌐 Bahasa Terjemahan yang Tersedia",
+    "languages_description": "Pilih bahasa terjemahan...",
+    "languages_col1": "Bahasa (A-L)",
+    "languages_col2": "Bahasa (M-Z)",
+    "languages_footer": "Gunakan /setlang untuk menyimpan pilihan Anda"
+    }
+}

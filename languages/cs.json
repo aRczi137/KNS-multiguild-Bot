@@ -1,0 +1,21 @@
+{
+    "translator": {
+    "translation_title": "Překlad",
+    "setlang_title": "🌐 Vyberte výchozí jazyk překladu",
+    "setlang_description": "Z níže uvedené nabídky vyberte jazyk, ve kterém chcete dostávat překlady.",
+    "setlang_tip": "💡 **Tip:** Tento jazyk bude použit automaticky při použití kontextové nabídky aplikace.",
+    "setlang_footer": "Nabídka vyprší za 3 minuty",
+    "current_language": "Aktuální jazyk",
+    "success_title": "✅ Jazyk byl úspěšně nastaven!",
+    "success_description": "Váš výchozí jazyk překladu je nyní:",
+    "code": "ISO kód",
+    "how_it_works": "🔄 Jak to funguje",
+    "how_it_works_desc": "Když u zprávy použijete **Translate Message**, bot ji automaticky přeloží do tohoto jazyka.",
+    "footer": "Toto můžete kdykoli změnit pomocí /setlang",
+    "languages_title": "🌐 Dostupné jazyky překladu",
+    "languages_description": "Vyberte jazyk překladu...",
+    "languages_col1": "Jazyky (A-L)",
+    "languages_col2": "Jazyky (M-Z)",
+    "languages_footer": "Pro uložení volby použijte /setlang"
+    }
+}

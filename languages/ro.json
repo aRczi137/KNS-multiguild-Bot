@@ -1,0 +1,21 @@
+{
+    "translator": {
+    "translation_title": "Traducere",
+    "setlang_title": "🌐 Selectați limba de traducere implicită",
+    "setlang_description": "Alegeți din meniul de mai jos limba în care doriți să primiți traducerile.",
+    "setlang_tip": "💡 **Sfat:** Această limbă va fi utilizată automat atunci când folosiți meniul contextual al aplicației.",
+    "setlang_footer": "Meniul expiră în 3 minute",
+    "current_language": "Limba curentă",
+    "success_title": "✅ Limba a fost setată cu succes!",
+    "success_description": "Limba implicită de traducere este acum:",
+    "code": "Cod ISO",
+    "how_it_works": "🔄 Cum funcționează",
+    "how_it_works_desc": "Când folosiți **Translate Message** pe un mesaj, botul îl va traduce automat în această limbă.",
+    "footer": "Puteți schimba acest lucru oricând folosind /setlang",
+    "languages_title": "🌐 Limbi de traducere disponibile",
+    "languages_description": "Selectați o limbă de traducere...",
+    "languages_col1": "Limbi (A-L)",
+    "languages_col2": "Limbi (M-Z)",
+    "languages_footer": "Folosiți /setlang pentru a salva alegerea"
+    }
+}

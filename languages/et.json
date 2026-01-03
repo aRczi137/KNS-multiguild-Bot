@@ -1,0 +1,21 @@
+{
+    "translator": {
+    "translation_title": "Tõlge",
+    "setlang_title": "🌐 Vali vaikimisi tõlkekeel",
+    "setlang_description": "Vali allolevast menüüst keel, milles soovid tõlkeid saada.",
+    "setlang_tip": "💡 **Vihje:** Seda keelt kasutatakse automaatselt rakenduse kontekstimenüü kaudu.",
+    "setlang_footer": "Menüü aegub 3 minuti jooksul",
+    "current_language": "Praegune keel",
+    "success_title": "✅ Keel on edukalt määratud!",
+    "success_description": "Sinu vaikimisi tõlkekeel on nüüd:",
+    "code": "ISO kood",
+    "how_it_works": "🔄 Kuidas see töötab",
+    "how_it_works_desc": "Kui kasutad sõnumil funktsiooni **Translate Message**, tõlgib bot selle automaatselt sellesse keelde.",
+    "footer": "Saad seda igal ajal muuta käsuga /setlang",
+    "languages_title": "🌐 Saadaval olevad tõlkekeeled",
+    "languages_description": "Vali tõlkekeel...",
+    "languages_col1": "Keeled (A-L)",
+    "languages_col2": "Keeled (M-Z)",
+    "languages_footer": "Kasuta /setlang valiku salvestamiseks"
+    }
+}

@@ -1,0 +1,21 @@
+{
+    "translator": {
+    "translation_title": "Vertimas",
+    "setlang_title": "🌐 Pasirinkite numatytąją vertimo kalbą",
+    "setlang_description": "Iš žemiau esančio meniu pasirinkite kalbą, kuria norite gauti vertimus.",
+    "setlang_tip": "💡 **Patarimas:** Ši kalba bus naudojama automatiškai naudojant programos kontekstinį meniu.",
+    "setlang_footer": "Meniu nustos galioti po 3 minučių",
+    "current_language": "Dabartinė kalba",
+    "success_title": "✅ Kalba sėkmingai nustatyta!",
+    "success_description": "Jūsų numatytoji vertimo kalba dabar yra:",
+    "code": "ISO kodas",
+    "how_it_works": "🔄 Kaip tai veikia",
+    "how_it_works_desc": "Kai pranešimui naudosite **Translate Message**, botas jį automatiškai išvers į šią kalbą.",
+    "footer": "Tai galite bet kada pakeisti naudodami /setlang",
+    "languages_title": "🌐 Galimos vertimo kalbos",
+    "languages_description": "Pasirinkite vertimo kalbą...",
+    "languages_col1": "Kalbos (A-L)",
+    "languages_col2": "Kalbos (M-Z)",
+    "languages_footer": "Naudokite /setlang, kad išsaugotumėte pasirinkimą"
+    }
+}

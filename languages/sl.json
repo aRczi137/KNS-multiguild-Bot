@@ -1,0 +1,21 @@
+{
+    "translator": {
+    "translation_title": "Prevod",
+    "setlang_title": "🌐 Izberite privzeti jezik prevajanja",
+    "setlang_description": "V spodnjem meniju izberite jezik, v katerem želite prejemati prevode.",
+    "setlang_tip": "💡 **Nasvet:** Ta jezik bo samodejno uporabljen pri uporabi kontekstnega menija aplikacije.",
+    "setlang_footer": "Meni poteče čez 3 minute",
+    "current_language": "Trenutni jezik",
+    "success_title": "✅ Jezik uspešno nastavljen!",
+    "success_description": "Vaš privzeti jezik prevajanja je zdaj:",
+    "code": "ISO koda",
+    "how_it_works": "🔄 Kako deluje",
+    "how_it_works_desc": "Ko pri sporočilu uporabite **Translate Message**, ga bo bot samodejno prevedel v ta jezik.",
+    "footer": "To lahko kadar koli spremenite z /setlang",
+    "languages_title": "🌐 Razpoložljivi jeziki prevajanja",
+    "languages_description": "Izberite jezik prevajanja...",
+    "languages_col1": "Jeziki (A-L)",
+    "languages_col2": "Jeziki (M-Z)",
+    "languages_footer": "Uporabite /setlang za shranjevanje izbire"
+    }
+}

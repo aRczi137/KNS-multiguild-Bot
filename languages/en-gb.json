@@ -1,0 +1,21 @@
+{
+    "translator": {
+    "translation_title": "Translation",
+    "setlang_title": "🌐 Select Default Translation Language",
+    "setlang_description": "Choose the language from the menu below that you want to receive translations in.",
+    "setlang_tip": "💡 **Tip:** This language will be used automatically when using the app's context menu.",
+    "setlang_footer": "Menu expires in 3 minutes",
+    "current_language": "Current language",
+    "success_title": "✅ Language Set Successfully!",
+    "success_description": "Your default translation language is now:",
+    "code": "ISO Code",
+    "how_it_works": "🔄 How it works",
+    "how_it_works_desc": "When you use **Translate Message** on a message, the bot will automatically translate it into this language.",
+    "footer": "You can change this anytime using /setlang",
+    "languages_title": "🌐 Available Translation Languages",
+    "languages_description": "Select a translation language...",
+    "languages_col1": "Languages (A-L)",
+    "languages_col2": "Languages (M-Z)",
+    "languages_footer": "Use /setlang to save your default choice"
+    }
+}

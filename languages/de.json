@@ -1,0 +1,20 @@
+{"translator": {
+    "translation_title": "Übersetzung",
+    "setlang_title": "🌐 Standard-Übersetzungssprache wählen",
+    "setlang_description": "Wählen Sie im Menü unten die Sprache aus, in der Sie Übersetzungen erhalten möchten.",
+    "setlang_tip": "💡 **Hinweis:** Diese Sprache wird automatisch verwendet, wenn Sie das Kontextmenü der App nutzen.",
+    "setlang_footer": "Menü läuft in 3 Minuten ab",
+    "current_language": "Aktuelle Sprache",
+    "success_title": "✅ Sprache erfolgreich eingestellt!",
+    "success_description": "Ihre Standard-Übersetzungssprache ist jetzt:",
+    "code": "ISO-Code",
+    "how_it_works": "🔄 Wie es funktioniert",
+    "how_it_works_desc": "Wenn Sie **Translate Message** bei einer Nachricht verwenden, übersetzt der Bot diese automatisch in diese Sprache.",
+    "footer": "Sie können dies jederzeit mit /setlang ändern",
+    "languages_title": "🌐 Verfügbare Übersetzungssprachen",
+    "languages_description": "Wählen Sie eine Sprache...",
+    "languages_col1": "Sprachen (A-L)",
+    "languages_col2": "Sprachen (M-Z)",
+    "languages_footer": "Nutzen Sie /setlang, um Ihre Wahl zu speichern"
+    }
+}

@@ -63,6 +63,12 @@ class ModulesManager(commands.Cog):
                 "description": "Tłumaczenie wiadomości DeepL",
                 "emoji": "🌐",
                 "requires_setup": False
+            },
+            "tempchan": {
+                "name": "Private Channels",
+                "description": "System prywatnych kanałów z auto-cleanup",
+                "emoji": "🔒",
+                "requires_setup": True
             }
         }
 

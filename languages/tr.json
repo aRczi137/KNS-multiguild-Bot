@@ -1,0 +1,21 @@
+{
+    "translator": {
+    "translation_title": "Çeviri",
+    "setlang_title": "🌐 Varsayılan Çeviri Dilini Seçin",
+    "setlang_description": "Çevirileri almak istediğiniz dili aşağıdaki menüden seçin.",
+    "setlang_tip": "💡 **İpucu:** Bu dil, uygulamanın içerik menüsü kullanıldığında otomatik olarak kullanılacaktır.",
+    "setlang_footer": "Menünün süresi 3 dakika içinde dolacak",
+    "current_language": "Geçerli dil",
+    "success_title": "✅ Dil Başarıyla Ayarlandı!",
+    "success_description": "Varsayılan çeviri diliniz artık:",
+    "code": "ISO Kodu",
+    "how_it_works": "🔄 Nasıl çalışır",
+    "how_it_works_desc": "Bir mesajda **Translate Message** özelliğini kullandığınızda, bot mesajı otomatik olarak bu dile çevirecektir.",
+    "footer": "Bunu istediğiniz zaman /setlang komutuyla değiştirebilirsiniz",
+    "languages_title": "🌐 Mevcut Çeviri Dilleri",
+    "languages_description": "Bir çeviri dili seçin...",
+    "languages_col1": "Diller (A-L)",
+    "languages_col2": "Diller (M-Z)",
+    "languages_footer": "Seçiminizi kaydetmek için /setlang kullanın"
+    }
+}

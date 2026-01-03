@@ -1,0 +1,21 @@
+{
+    "translator": {
+    "translation_title": "翻訳",
+    "setlang_title": "🌐 デフォルトの翻訳言語を選択",
+    "setlang_description": "翻訳を受け取りたい言語を以下のメニューから選択してください。",
+    "setlang_tip": "💡 **ヒント:** アプリのコンテキストメニューを使用すると、この言語が自動的に適用されます。",
+    "setlang_footer": "メニューの期限は3分間です",
+    "current_language": "現在の言語",
+    "success_title": "✅ 言語が正常に設定されました！",
+    "success_description": "デフォルトの翻訳言語が次のように設定されました：",
+    "code": "ISOコード",
+    "how_it_works": "🔄 仕組み",
+    "how_it_works_desc": "メッセージで **Translate Message** を使用すると、ボットが自動的にこの言語に翻訳します。",
+    "footer": "/setlang を使用して、いつでも変更できます",
+    "languages_title": "🌐 利用可能な翻訳言語",
+    "languages_description": "翻訳言語を選択...",
+    "languages_col1": "言語 (A-L)",
+    "languages_col2": "言語 (M-Z)",
+    "languages_footer": "設定を保存するには /setlang を使用してください"
+    }
+}

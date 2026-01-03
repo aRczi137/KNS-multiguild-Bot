@@ -1,0 +1,21 @@
+{
+    "translator": {
+    "translation_title": "Oversettelse",
+    "setlang_title": "🌐 Velg standard oversettelsesspråk",
+    "setlang_description": "Velg språket du vil motta oversettelser på fra menyen nedenfor.",
+    "setlang_tip": "💡 **Tips:** Dette språket vil bli brukt automatisk når du bruker appens kontekstmeny.",
+    "setlang_footer": "Menyen utløper om 3 minutter",
+    "current_language": "Gjeldende språk",
+    "success_title": "✅ Språk er nå angitt!",
+    "success_description": "Ditt standard oversettelsesspråk er nå:",
+    "code": "ISO-kode",
+    "how_it_works": "🔄 Slik fungerer det",
+    "how_it_works_desc": "Når du bruker **Translate Message** på en melding, vil boten automatisk oversette den til dette språket.",
+    "footer": "Du kan endre dette når som helst med /setlang",
+    "languages_title": "🌐 Tilgjengelige oversettelsesspråk",
+    "languages_description": "Velg et oversettelsesspråk...",
+    "languages_col1": "Språk (A-L)",
+    "languages_col2": "Språk (M-Z)",
+    "languages_footer": "Bruk /setlang for å lagre valget ditt"
+    }
+}

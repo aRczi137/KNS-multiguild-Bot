@@ -1,0 +1,21 @@
+{
+    "translator": {
+    "translation_title": "Vertaling",
+    "setlang_title": "🌐 Selecteer de standaard vertaaltaal",
+    "setlang_description": "Kies in het onderstaande menu de taal waarin u vertalingen wilt ontvangen.",
+    "setlang_tip": "💡 **Tip:** Deze taal wordt automatisch gebruikt bij het gebruik van het contextmenu van de app.",
+    "setlang_footer": "Menu verloopt over 3 minuten",
+    "current_language": "Huidige taal",
+    "success_title": "✅ Taal succesvol ingesteld!",
+    "success_description": "Uw standaard vertaaltaal is nu:",
+    "code": "ISO-code",
+    "how_it_works": "🔄 Hoe het werkt",
+    "how_it_works_desc": "Wanneer u **Translate Message** op een bericht gebruikt, vertaalt de bot het automatisch naar deze taal.",
+    "footer": "U kunt dit op elk gewenst moment wijzigen met /setlang",
+    "languages_title": "🌐 Beschikbare vertaaltalen",
+    "languages_description": "Selecteer een vertaaltaal...",
+    "languages_col1": "Talen (A-L)",
+    "languages_col2": "Talen (M-Z)",
+    "languages_footer": "Gebruik /setlang om uw keuze op te slaan"
+    }
+}
