@@ -58,6 +58,12 @@ class ModulesManager(commands.Cog):
                 "emoji": "🛡️",
                 "requires_setup": False
             },
+            "schedule": {
+                "name": "Scheduler",
+                "description": "Zaplanowane wiadomości i eventy",
+                "emoji": "📅",
+                "requires_setup": False
+            },
             "translator": {
                 "name": "Translator",
                 "description": "Tłumaczenie wiadomości DeepL",
