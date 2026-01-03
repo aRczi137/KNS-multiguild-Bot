@@ -1,0 +1,19 @@
+{
+    "schedules": [
+        {
+            "name": "Shield",
+            "enabled": true,
+            "is_multiday": true,
+            "multiday_config": {
+                "start_day": 4,
+                "start_time": "18:00",
+                "end_day": 5,
+                "end_time": "23:00"
+            },
+            "template": "Shiled Image",
+            "channel_id": 1380103800651644948,
+            "interval_hours": 2,
+            "last_sent": "2026-01-03T10:23:15.481589-02:00"
+        }
+    ]
+}

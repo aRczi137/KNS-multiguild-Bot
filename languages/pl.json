@@ -111,5 +111,24 @@
     "guild_set": "✅ Domyślny język serwera ustawiony na **{language}**!",
     "help_title": "🌐 Ustawienia języka",
     "help_desc": "Ustaw swój preferowany język odpowiedzi bota."
+  },
+  "translator": {
+    "translation_title": "Tłumaczenie",
+    "setlang_title": "🌐 Wybierz domyślny język tłumaczenia",
+    "setlang_description": "Wybierz język z menu poniżej, na który chcesz otrzymywać tłumaczenia.",
+    "setlang_tip": "💡 **Wskazówka:** Ten język będzie używany automatycznie przy korzystaniu z menu kontekstowego aplikacji.",
+    "setlang_footer": "Menu wygaśnie za 3 minuty",
+    "current_language": "Obecny język",
+    "success_title": "✅ Język Ustawiony Pomyślnie!",
+    "success_description": "Twój domyślny język tłumaczenia to teraz:",
+    "code": "ISO Kod",
+    "how_it_works": "🔄 Jak to działa",
+    "how_it_works_desc": "Kiedy użyjesz **Translate Message** na wiadomości, bot automatycznie przetłumaczy ją na ten język.",
+    "footer": "Możesz to zmienić w każdej chwili za pomocą /setlang",
+    "languages_title": "🌐 Dostępne Języki Tłumaczenia",
+    "languages_description": "Wybierz język tłumaczenia...",
+    "languages_col1": "Języki (A-L)",
+    "languages_col2": "Języki (M-Z)",
+    "languages_footer": "Użyj /setlang aby zapisać domyślny wybór"
   }
 }

@@ -1,0 +1,19 @@
+{
+    "Shiled Image": {
+        "type": "embed",
+        "content": "@everyone",
+        "embed": {
+            "title": ":shield: Knights! Equip Your Shields! :shield:",
+            "description": "The realm calls for your presence! The horns of **WAR** echo across the land. The banners rise. The time has come. Join your fellow warriors in battle and defend the **⚔️ KINGDOM OF KNIGHTS⚔️ **.",
+            "color": "#d07d23",
+            "fields": [],
+            "thumbnail": "https://cdn.discordapp.com/attachments/678032040960196612/1452072568369582101/image.png?ex=69487b76&is=694729f6&hm=2356052e0ac51b45c7a462a449b2a36e58173d53abcbd0991a918044aa586c01&",
+            "image": null,
+            "author": null,
+            "footer": {
+                "text": "⚔️ For glory. For the Kingdom. For each other! ⚔️",
+                "icon_url": null
+            }
+        }
+    }
+}

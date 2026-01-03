@@ -41,9 +41,6 @@ class MultiGuildBot(commands.Bot):
         # Inicjalizuj manager języków
         self.language_manager = LanguageManager(self)
         
-        # Utwórz polskie tłumaczenia
-        self.language_manager.create_polish_translations()
-        
         # Backward compatibility - dla starych cogów które używają bot.config
         # Będzie zawierać globalną konfigurację
         self.config = self.config_manager.global_config

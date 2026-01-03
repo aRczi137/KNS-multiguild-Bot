@@ -1,0 +1,93 @@
+{
+    "guild_id": 678032040301559839,
+    "created_at": "2025-11-16T14:09:59.487696",
+    "enabled_modules": [
+        "free_games",
+        "welcome",
+        "translator",
+        "moderation",
+        "reaction_roles"
+    ],
+    "command_prefix": "!",
+    "embed_color": "#d07d23",
+    "timezone": "Europe/Warsaw",
+    "log_channel": null,
+    "suggestions_channel": null,
+    "welcome_channel": null,
+    "admin_roles": [],
+    "moderator_roles": [],
+    "leaderboard": {
+        "enabled": false,
+        "channel_id": null,
+        "message_id": null,
+        "embed_title": "APC Leaderboard",
+        "main_apc_field_name": "Main APC Strength",
+        "second_apc_field_name": "Second APC Strength"
+    },
+    "free_games": {
+        "enabled": false,
+        "channel_id": 678961750791553025,
+        "ping_role_id": null,
+        "check_interval_minutes": 60,
+        "enabled_platforms": [
+            "steam",
+            "epic-games-store"
+        ]
+    },
+    "reaction_roles": {
+        "enabled": false,
+        "channel_id": 678961750791553025,
+        "message_id": 1440114135361785898,
+        "traveler_role_id": null,
+        "role_mappings": [
+            {
+                "emoji": "1️⃣",
+                "role_id": 707332700587163719,
+                "name": "LSPD"
+            },
+            {
+                "emoji": "2️⃣",
+                "role_id": 727174266688372782,
+                "name": "Medal"
+            },
+            {
+                "emoji": "3️⃣",
+                "role_id": 1380052018500210699,
+                "name": "nowa rola"
+            }
+        ],
+        "feedback": {
+            "enabled": true,
+            "color": 65280,
+            "message": "✅ Role Updated Successfully!"
+        },
+        "embed": {
+            "title": "🎭 Wybierz swoją rolę",
+            "description": "Wybierz swoją rolę klikając odpowiedni przycisk:\n\n1️⃣ — LSPD\n2️⃣ — Medal\n3️⃣ — nowa rola\n",
+            "color": "#d07d23"
+        }
+    },
+    "welcome_message": {
+        "enabled": false,
+        "channel_id": 678032040960196612,
+        "mention_user": true,
+        "embed": {
+            "color": "#d07d23",
+            "title": "Essa",
+            "description": "Skibidibi",
+            "thumbnail_url": null,
+            "footer_text": "Have a great time!",
+            "footer_icon_url": null
+        }
+    },
+    "suggestions": {
+        "enabled": false,
+        "channel_id": null
+    },
+    "moderation": {
+        "enabled": false,
+        "moderator_roles": [
+            "OWNER"
+        ]
+    }
+}
